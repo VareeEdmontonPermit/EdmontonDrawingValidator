@@ -1,0 +1,77 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>EdmontonDrawingProcessor</RootNamespace>
+    <AssemblyName>EdmontonDrawingProcessor</AssemblyName>
+    <ApplicationIcon>images\Cornmanthe3rd-Metronome-Media-illustrator.ico</ApplicationIcon>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+  <!-- Adds EnvironmentName variable during publish -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+		<EnvironmentName>Development</EnvironmentName>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<EnvironmentName>Production</EnvironmentName>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="BusinessLogic\**" />
+	  <EmbeddedResource Remove="BusinessLogic\**" />
+	  <None Remove="BusinessLogic\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Compile Remove="AmalgamationReportDrawingValidation.cs" />
+	  <Compile Remove="PlotLayoutReportDrawingValidation.cs" />
+	  <Compile Remove="SubDivisionLayoutReportDrawingValidation .cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove=".gitattributes" />
+	  <None Remove="CDXFFileProcess.cs~RF43675cdd.TMP" />
+	</ItemGroup>
+  
+
+  <ItemGroup>
+    <Content Include="images\Cornmanthe3rd-Metronome-Media-illustrator.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="log4net" Version="2.0.15" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="6.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="6.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="6.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="6.0.0" />
+    <PackageReference Include="NetTopologySuite" Version="2.4.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="System.Net.Http.Json" Version="6.0.0" />
+    <PackageReference Include="System.Net.Http.WinHttpHandler" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<DotNetCliToolReference Include="Microsoft.EntityFrameworkCore.Tools.DotNet" Version="2.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsetting.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="log4net.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+       <ProjectReference Include="..\netDxf\netDxf\netDxf.csproj" />
+       <ProjectReference Include="..\SharedClasses\SharedClasses.csproj" />
+  </ItemGroup> 
+</Project>
