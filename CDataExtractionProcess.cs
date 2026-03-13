@@ -14,7 +14,7 @@ namespace EdmontonDrawingValidator {
         public List<LayerDataWithText> ExtractDataFromDXF(string FileNameInProcess, string InputFile, string OutputFolder, bool DoYouWantLayerWiseDataFile, ref List<string> lstLayers, ref Dictionary<string, string> dictLayerDefaultColour, ref bool DxfFileHasError, ref List<string> lstErrorMessages)
         {
             List<LayerCoordinateInfo> lstResult = new List<LayerCoordinateInfo>();
-            List<LayerTextInfo> lstTextResult = new List<LayerTextInfo>();
+            List<LayerTextInfo> lstTextResult = new List<LayerTextInfo>();  
 
             //Process the file now
             ExtractLayerCoordinateAndTextData(InputFile, ref dictLayerDefaultColour, ref lstResult, ref lstTextResult, ref DxfFileHasError, ref lstErrorMessages);
@@ -65,101 +65,6 @@ namespace EdmontonDrawingValidator {
             }
 
             return lstLayerWithText;
-        }
-
-        public void AdjustDataInRespectToBlockBeginAndReference(ref List<LayerCoordinateInfo> lstResult, ref List<LayerTextInfo> lstTextResult, List<DXFData> lstBlock, List<DXFData> lstBlockRef)
-        {
-            try
-            {
-                //Coordinate
-                //Extract distinct layers from data
-                List<string> lstLayerNames = new List<string>() { DxfLayersName.MarginLine }; // lstResult.Select(x => x.LayerName).Distinct().ToList();
-                List<string> lstR = lstBlockRef.Select(x => x.Layer).ToList().Distinct().ToList();
-                foreach (string sLayer in lstLayerNames)
-                {
-                    //Extract block ref by layers 
-                    List<DXFData> lstBlockReferenceLayerData = lstBlockRef.Where(x => x.Layer.ToLower().Trim() == sLayer).ToList();
-
-                    if (lstBlockReferenceLayerData != null && lstBlockReferenceLayerData.Count > 0)
-                    {
-                        //Extract block begin name by block ref.
-                        List<string> lstBlockRefLayerNames = lstBlockReferenceLayerData.Select(x => x.Name).Distinct().ToList();
-                        foreach (string sBlockName in lstBlockRefLayerNames)
-                        {
-                            //Comment on 24May2022
-                            DXFData objBlockBegin = lstBlock.Where(x => sBlockName == x.Name).FirstOrDefault();
-                            if (objBlockBegin == null)
-                                continue;
-
-                            double beginX = double.Parse(objBlockBegin.X.Trim());
-                            double beginY = double.Parse(objBlockBegin.Y.Trim());
-
-                            DXFData objBlockBeginRef = lstBlockRef.Where(x => x.Layer.Trim().ToLower() == sLayer && x.Name == sBlockName).FirstOrDefault();
-
-                            double beginRefX = double.Parse(objBlockBeginRef.X.Trim());
-                            double beginRefY = double.Parse(objBlockBeginRef.Y.Trim());
-
-                            double diffX = beginRefX - beginX;
-                            double diffY = beginRefY - beginY;
-
-                            List<LayerCoordinateInfo> lstLayerWiseFilterSet = lstResult.Where(x => x.LayerName.ToLower().Trim() == sLayer).ToList();
-                            foreach (LayerCoordinateInfo item in lstLayerWiseFilterSet)
-                            {
-                                foreach (Cordinates cord in item.Coordinates)
-                                {
-                                    cord.X += diffX;
-                                    cord.Y += diffY;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                //Text data coordinate also be adjust as per block begin and block reference
-                //lstLayerNames = new List<string>() { DxfLayersName.MarginLine };  //lstTextResult.Select(x => x.LayerName).Distinct().ToList();
-                foreach (string sLayer in lstLayerNames)
-                {
-                    //Extract block ref by layers 
-                    List<DXFData> lstBlockReferenceLayerData = lstBlockRef.Where(x => x.Layer.Trim().ToLower() == sLayer).ToList();
-                    if (lstBlockReferenceLayerData != null && lstBlockReferenceLayerData.Count > 0)
-                    {
-                        //Extract block begin name by block ref.
-                        List<string> lstBlockRefLayerNames = lstBlockReferenceLayerData.Select(x => x.Name).Distinct().ToList();
-                        foreach (string sBlockName in lstBlockRefLayerNames)
-                        {
-                            DXFData objBlockBegin = lstBlock.Where(x => sBlockName == x.Name).FirstOrDefault();
-                            //comment on 11May2022
-                            if (objBlockBegin == null || objBlockBegin.X.Trim() != "" || objBlockBegin.Y.Trim() != "" || objBlockBegin.X.Trim() == "0.0" && objBlockBegin.Y.Trim() == "0.0")
-                                continue;
-
-                            double beginX = double.Parse(objBlockBegin.X.Trim());
-                            double beginY = double.Parse(objBlockBegin.Y.Trim());
-
-                            DXFData objBlockBeginRef = lstBlockRef.Where(x => x.Layer.ToLower().Trim() == sLayer && x.Name == sBlockName).FirstOrDefault();
-
-                            double beginRefX = double.Parse(objBlockBeginRef.X.Trim());
-                            double beginRefY = double.Parse(objBlockBeginRef.Y.Trim());
-
-                            double diffX = beginRefX - beginX;
-                            double diffY = beginRefY - beginY;
-
-                            List<LayerTextInfo> lstLayerWiseFilterSet = lstTextResult.Where(x => x.LayerName.ToLower().Trim() == sLayer).ToList();
-                            foreach (LayerTextInfo item in lstLayerWiseFilterSet)
-                            {
-                                foreach (Cordinates cord in item.Coordinates)
-                                {
-                                    cord.X += diffX;
-                                    cord.Y += diffY;
-                                }
-                            }
-                        } // foreach
-                    } // if 
-                } // foreach
-            }
-            catch
-            {
-
-            }
         }
 
         public void WriteLayerTextData(List<LayerTextInfo> lstTextResult, string OutputFolder)

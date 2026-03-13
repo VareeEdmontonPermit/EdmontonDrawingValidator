@@ -39,7 +39,7 @@ namespace EdmontonDrawingValidator
         public static string CreateDrawingFileYesNo { get; set; }
         public static string JsonDataFolder { get; set; }
         public static string InputFolder { get; set; }
-        public static string RuleTesterInputFolder { get; set; }
+        public static string DrawingDataProcessorInputFolder { get; set; }
         public static string InputFileExtension { get; set; }
 
         private static readonly int DefaultNumberOfThreadToStart = 5;
@@ -76,8 +76,6 @@ namespace EdmontonDrawingValidator
                 return errorHtmlDrawingTemplateData;
             }
         }
-
-        public static string[] GetAllBuiltupLineList = new string[] { DxfLayersName.CommercialBuiltUpLine, DxfLayersName.ResidentBuiltUpLine, DxfLayersName.IndustrialBuiltUpLine, DxfLayersName.SpecialUseBuiltUpLine };
 
         public static string errorHtmlDrawingTemplatePath { get; set; }
         public static string svgScale { get; set; }
@@ -1326,21 +1324,26 @@ namespace EdmontonDrawingValidator
 
             return lstSitePlanLayer;
         }
+
+        public static List<string> GetLayerNameNoClosePolyline()
+        {
+            return new List<string> { DxfLayersName.RearMarginLine, DxfLayersName.GradeLine, DxfLayersName.FloorLine };
+        }
         public List<LayerInfo> GetAllDataBuildingFloorWise(List<LayerDataWithText> lstAllInputData, ref LayerExtractor objLayerExtractor)
         {
             List<LayerInfo> lstBuildingLayer = new List<LayerInfo>();
             if (lstAllInputData == null || lstAllInputData.Count == 0)
                 return lstBuildingLayer;
 
-            List<LayerDataWithText> lstBuilding = lstAllInputData.Where(x => x.LayerName.ToLower().Trim() == DxfLayersName.Building).ToList();
-            lstBuildingLayer = objLayerExtractor.SetLayerInfo(lstBuilding, DxfLayersName.Building);
+            List<LayerDataWithText> lstBuilding = lstAllInputData.Where(x => x.LayerName.ToLower().Trim() == DxfLayersName.Unit).ToList();
+            lstBuildingLayer = objLayerExtractor.SetLayerInfo(lstBuilding, DxfLayersName.Unit);
 
-            objLayerExtractor.ExtractChildLayersForParentLayer(lstAllInputData, DxfLayersName.Floor, DxfLayersName.Floor, ref lstBuildingLayer);
+            objLayerExtractor.ExtractChildLayersForParentLayer(lstAllInputData, DxfLayersName.FloorPlan, DxfLayersName.FloorPlan, ref lstBuildingLayer);
             objLayerExtractor.ExtractChildLayersForParentLayer(lstAllInputData, DxfLayersName.Section, DxfLayersName.Section, ref lstBuildingLayer);
 
             foreach (LayerInfo itemBuilding in lstBuildingLayer)
             {
-                if (!itemBuilding.Child.ContainsKey(DxfLayersName.Floor) && !itemBuilding.Child.ContainsKey(DxfLayersName.Section))
+                if (!itemBuilding.Child.ContainsKey(DxfLayersName.FloorPlan) && !itemBuilding.Child.ContainsKey(DxfLayersName.Section))
                     continue;
 
                 if (itemBuilding.Child.ContainsKey(DxfLayersName.Section))
@@ -1350,7 +1353,7 @@ namespace EdmontonDrawingValidator
                 }
                 else
                 {
-                    List<LayerInfo> lstFloor = itemBuilding.Child[DxfLayersName.Floor];
+                    List<LayerInfo> lstFloor = itemBuilding.Child[DxfLayersName.FloorPlan];
                     objLayerExtractor.ExtractChildLayersForParentLayer(lstAllInputData, GetDictionaryForAllLayer(), ref lstFloor);
                 }
             }
@@ -1369,64 +1372,6 @@ namespace EdmontonDrawingValidator
         public List<string> AllLayersName()
         {
             List<string> lstLayersName = new List<string>();
-            lstLayersName.Add(DxfLayersName.AccessoryUse);
-            lstLayersName.Add(DxfLayersName.ArchProject);
-            lstLayersName.Add(DxfLayersName.Beam);
-            lstLayersName.Add(DxfLayersName.BasementArea);
-            lstLayersName.Add(DxfLayersName.Building);
-            lstLayersName.Add(DxfLayersName.Chaja);                     //lstLayersName.Add(DxfLayersName.CommercialFSI);
-            lstLayersName.Add(DxfLayersName.CommercialBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.CommonPlot);
-            lstLayersName.Add(DxfLayersName.Door);
-            lstLayersName.Add(DxfLayersName.Exstructure);
-            lstLayersName.Add(DxfLayersName.ExBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.Floor);
-            lstLayersName.Add(DxfLayersName.FloorInSection);
-            lstLayersName.Add(DxfLayersName.GroundLevel);
-            lstLayersName.Add(DxfLayersName.HighFloodLevel);
-            lstLayersName.Add(DxfLayersName.Lift);
-            lstLayersName.Add(DxfLayersName.MainRoad);
-            lstLayersName.Add(DxfLayersName.MarginLine);
-            lstLayersName.Add(DxfLayersName.NetPlot);
-            lstLayersName.Add(DxfLayersName.IndividualSubPlot);
-            lstLayersName.Add(DxfLayersName.OTS);                       //lstLayersName.Add(DxfLayersName.OWT);
-            lstLayersName.Add(DxfLayersName.Parking);
-            lstLayersName.Add(DxfLayersName.Plot);                      //lstLayersName.Add(DxfLayersName.ProposedWork);
-            lstLayersName.Add(DxfLayersName.Propwork);
-            lstLayersName.Add(DxfLayersName.Ramp);                          //lstLayersName.Add(DxfLayersName.ResidentFSI);
-            lstLayersName.Add(DxfLayersName.ResidentBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.IndustrialBuiltUpLine);            //lstLayersName.Add(DxfLayersName.SpecialFSI);            //lstLayersName.Add(DxfLayersName.SpecialBuiltUpLine);            //lstLayersName.Add(DxfLayersName.SpecialUseFSI);
-            lstLayersName.Add(DxfLayersName.SpecialUseBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.StairCase);
-            lstLayersName.Add(DxfLayersName.Section);
-            lstLayersName.Add(DxfLayersName.SectionalItem);
-            lstLayersName.Add(DxfLayersName.UnitBUA);
-            lstLayersName.Add(DxfLayersName.Void);
-            lstLayersName.Add(DxfLayersName.DriveWay);
-            lstLayersName.Add(DxfLayersName.Wall);                          //lstLayersName.Add(DxfLayersName.InternalRoad);
-            lstLayersName.Add(DxfLayersName.ResidentInternalRoad);
-            lstLayersName.Add(DxfLayersName.NonResidentInternalRoad);
-            lstLayersName.Add(DxfLayersName.Passage);
-            lstLayersName.Add(DxfLayersName.RoadWidening);
-            lstLayersName.Add(DxfLayersName.Balcony);
-            lstLayersName.Add(DxfLayersName.Room);
-            lstLayersName.Add(DxfLayersName.Terrace);
-            lstLayersName.Add(DxfLayersName.SitePlan);
-            lstLayersName.Add(DxfLayersName.Window);
-            lstLayersName.Add(DxfLayersName.RoadCurvature);
-            lstLayersName.Add(DxfLayersName.Subdivision);
-            lstLayersName.Add(DxfLayersName.RefugeeArea);
-            lstLayersName.Add(DxfLayersName.Amalgamation);
-            lstLayersName.Add(DxfLayersName.PrintArea);
-            lstLayersName.Add(DxfLayersName.WithInMarginLine);
-            lstLayersName.Add(DxfLayersName.CommonReferencePoint);
-            lstLayersName.Add(DxfLayersName.North);
-            lstLayersName.Add(DxfLayersName.OtherDetail);
-            lstLayersName.Add(DxfLayersName.NonOwnerPlot);
-            lstLayersName.Add(DxfLayersName.Loft);
-            lstLayersName.Add(DxfLayersName.WaterBody);
-            lstLayersName.Add(DxfLayersName.Connector);
-            lstLayersName.Add(DxfLayersName.SkyWalk);
             
             return lstLayersName;
         }
@@ -1434,70 +1379,6 @@ namespace EdmontonDrawingValidator
         public List<string> AllLayersNameForDrawing()
         {
             List<string> lstLayersName = new List<string>();
-            lstLayersName.Add(DxfLayersName.AccessoryUse);
-            lstLayersName.Add(DxfLayersName.ArchProject);
-            lstLayersName.Add(DxfLayersName.Beam);
-            lstLayersName.Add(DxfLayersName.BasementArea);
-            lstLayersName.Add(DxfLayersName.Balcony);
-            lstLayersName.Add(DxfLayersName.Building);
-            lstLayersName.Add(DxfLayersName.Chaja);
-            lstLayersName.Add(DxfLayersName.CommonPlot);
-            lstLayersName.Add(DxfLayersName.CommercialBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.Door);
-            lstLayersName.Add(DxfLayersName.Exstructure);
-            lstLayersName.Add(DxfLayersName.ExBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.Floor);
-            lstLayersName.Add(DxfLayersName.FloorInSection);
-            lstLayersName.Add(DxfLayersName.GroundLevel);
-            lstLayersName.Add(DxfLayersName.HighFloodLevel);
-            lstLayersName.Add(DxfLayersName.IndustrialBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.Lift);
-            lstLayersName.Add(DxfLayersName.MainRoad);
-            lstLayersName.Add(DxfLayersName.MarginLine);
-            lstLayersName.Add(DxfLayersName.NetPlot);
-            lstLayersName.Add(DxfLayersName.NonResidentInternalRoad);
-            lstLayersName.Add(DxfLayersName.OTS);
-            lstLayersName.Add(DxfLayersName.OtherDetail);
-            lstLayersName.Add(DxfLayersName.Parking);
-            lstLayersName.Add(DxfLayersName.Passage);
-            lstLayersName.Add(DxfLayersName.Plot);
-            lstLayersName.Add(DxfLayersName.IndividualSubPlot);
-            lstLayersName.Add(DxfLayersName.Propwork);
-
-            lstLayersName.Add(DxfLayersName.Ramp);
-            lstLayersName.Add(DxfLayersName.Room);
-            lstLayersName.Add(DxfLayersName.ResidentBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.ResidentInternalRoad);
-            lstLayersName.Add(DxfLayersName.RoadWidening);
-
-            lstLayersName.Add(DxfLayersName.Sanitation);
-            lstLayersName.Add(DxfLayersName.Section);
-            lstLayersName.Add(DxfLayersName.SectionalItem);
-            lstLayersName.Add(DxfLayersName.SitePlan);
-            lstLayersName.Add(DxfLayersName.SpecialUseBuiltUpLine);
-            lstLayersName.Add(DxfLayersName.StairCase);
-            lstLayersName.Add(DxfLayersName.Terrace);
-            lstLayersName.Add(DxfLayersName.Void);
-            lstLayersName.Add(DxfLayersName.UnitBUA);
-            lstLayersName.Add(DxfLayersName.DriveWay);
-
-            lstLayersName.Add(DxfLayersName.Wall);
-            lstLayersName.Add(DxfLayersName.Window);
-            lstLayersName.Add(DxfLayersName.RoadCurvature);
-
-            lstLayersName.Add(DxfLayersName.Subdivision);
-            lstLayersName.Add(DxfLayersName.RefugeeArea);
-            lstLayersName.Add(DxfLayersName.Amalgamation);
-
-            lstLayersName.Add(DxfLayersName.WithInMarginLine);
-            lstLayersName.Add(DxfLayersName.PrintArea);
-            lstLayersName.Add(DxfLayersName.CommonReferencePoint);
-            lstLayersName.Add(DxfLayersName.North);
-            lstLayersName.Add(DxfLayersName.NonOwnerPlot);
-            lstLayersName.Add(DxfLayersName.Loft);
-            lstLayersName.Add(DxfLayersName.WaterBody);
-            lstLayersName.Add(DxfLayersName.Connector);
-            lstLayersName.Add(DxfLayersName.SkyWalk);
 
             return lstLayersName;
         }

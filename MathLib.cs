@@ -2365,31 +2365,7 @@ namespace EdmontonDrawingValidator
             return null;
         }
          
-        public void GetBuildingGroundLine(List<LayerDataWithText> lstResult, LayerInfo building, ref CLineSegment grdLine, ref bool IsHeightFromHFL)
-        {
-            List<LayerDataWithText> lstAllGroundLines = lstResult.Where(x => x.LayerName.ToLower().Trim() == DxfLayersName.GroundLevel).ToList();
-
-            //added on 27Jun2022 if ground line not found then check high flood line exists or not
-            if (lstAllGroundLines == null || lstAllGroundLines.Count == 0)
-            {
-                lstAllGroundLines = lstResult.Where(x => x.LayerName.ToLower().Trim() == DxfLayersName.HighFloodLevel).ToList();
-                if (lstAllGroundLines != null && lstAllGroundLines.Count > 0)
-                    IsHeightFromHFL = true;
-            }
-
-            foreach (LayerDataWithText groundLine in lstAllGroundLines)
-            {
-                if (groundLine == null || groundLine.Coordinates == null || groundLine.Coordinates.Count == 0)
-                    continue;
-
-                if (IsInPolyUsingAngle(building.Data.Coordinates, groundLine.Coordinates))
-                {
-                    grdLine = MakeConnectedLines(groundLine.Coordinates).FirstOrDefault();
-                    break;
-                }
-            }
-        }
-
+      
         /// <summary>
         /// Get stair landing 
         /// </summary>
@@ -2420,7 +2396,6 @@ namespace EdmontonDrawingValidator
                 return lstCords;
 
             bool IsClosePolygon = false;
-            //13Apr2023 modified method              
             if (lines[0].StartPoint.Equals(lines[lines.Count - 1].EndPoint))
                 IsClosePolygon = true;
 
@@ -2481,13 +2456,14 @@ namespace EdmontonDrawingValidator
 
                     } // for each bulge
 
-                    //added on 19Sept2022 for fixed which polygon is not closed needs to close because area calculation goes incorrect
-                    if (lstBulgeCord != null && lstBulgeCord.Count > 2 && CheckLineTypeIsCenterLine(itemElement.LineType) == false && itemElement.LayerName.ToLower().Trim().Equals(DxfLayersName.MarginLine) == false)
+                    if (lstBulgeCord != null && lstBulgeCord.Count > 2 && CheckLineTypeIsCenterLine(itemElement.LineType) == false && itemElement.LayerName.ToLower().Trim().Equals(DxfLayersName.RearMarginLine) == false && General.GetLayerNameNoClosePolyline().Contains(itemElement.LayerName.ToLower()) == false)
                     {
                         if (!lstBulgeCord.First().Equals(lstBulgeCord.Last()))
                             lstBulgeCord.Add(lstBulgeCord.First());
                     }
-                    if (CheckLineTypeIsCenterLine(itemElement.LineType) == false && itemElement.LayerName.ToLower().Trim().Equals(DxfLayersName.MarginLine) == false && lstBulgeCord.Count() > 2)
+                    if (CheckLineTypeIsCenterLine(itemElement.LineType) == false && 
+                        itemElement.LayerName.ToLower().Trim().Equals(DxfLayersName.RearMarginLine) == false && 
+                        lstBulgeCord.Count() > 2)
                         itemElement.Lines = MakeClosePolyLines(lstBulgeCord);
                     else
                         itemElement.Lines = MakeConnectedLines(lstBulgeCord);
@@ -2496,32 +2472,13 @@ namespace EdmontonDrawingValidator
                 }
                 else
                 {
-                    if (CheckLineTypeIsCenterLine(itemElement.LineType) == false && itemElement.LayerName.ToLower().Trim().Equals(DxfLayersName.MarginLine) == false && itemElement.Coordinates.Count() > 2)
+                    if (CheckLineTypeIsCenterLine(itemElement.LineType) == false && itemElement.LayerName.ToLower().Trim().Equals(DxfLayersName.RearMarginLine) == false && itemElement.Coordinates.Count() > 2)
                         itemElement.Lines = MakeClosePolyLines(itemElement.Coordinates);
                     else
                         itemElement.Lines = MakeConnectedLines(itemElement.Coordinates);
                 }
             }
         }
-
- 
-        //Haversine  formula
-        //        var rad = function(x) {
-        //  return x* Math.PI / 180;
-        //    };
-
-        //    var getDistance = function(p1, p2) {
-        //  var R = 6378137; // Earth’s mean radius in meter
-        //    var dLat = rad(p2.lat() - p1.lat());
-        //    var dLong = rad(p2.lng() - p1.lng());
-        //    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        //      Math.cos(rad(p1.lat())) * Math.cos(rad(p2.lat())) *
-        //      Math.sin(dLong / 2) * Math.sin(dLong / 2);
-        //    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        //    var d = R * c;
-        //  return d; // returns the distance in meter
-        //}
-
         public CPolygon GetPolygonTranslateResult(List<Cordinates> MainPolygon, List<Cordinates> OtherPolygon, Cordinates MainRedRef, Cordinates OtherRedRef, Cordinates MainBlueRef, Cordinates OtherBlueRef, ref StringBuilder output)
         {
 

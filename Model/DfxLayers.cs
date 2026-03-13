@@ -73,6 +73,27 @@ namespace EdmontonDrawingValidator.Model
         public const string AcdbBlockEndValue = "  0";
 
         /// <summary>
+        /// DASHED
+        /// </summary>
+        public const string DashedLine = "DASHED"; //Dashed
+
+
+        /// <summary>
+        /// DASHED
+        /// </summary>
+        public const string LiftMachineRoomLine = "DASHED"; //Dashed
+
+        /// <summary>
+        /// CENTER
+        /// </summary>
+        public const string CenterLineCode = "CENTER";
+
+        /// <summary>
+        /// CENTER2
+        /// </summary>
+        public const string CenterLineCode2 = "CENTER2";
+
+        /// <summary>
         /// _lot
         /// </summary>
         public const string Lot = "_lot";
@@ -96,12 +117,7 @@ namespace EdmontonDrawingValidator.Model
         /// _floorplan
         /// </summary>
         public const string Floorplan = "_floorplan";
-
-        /// <summary>
-        /// _floorjoist
-        /// </summary>
-        public const string Floorjoist = "_floorjoist";
-
+        
         /// <summary>
         /// _driveway
         /// </summary>
@@ -134,10 +150,10 @@ namespace EdmontonDrawingValidator.Model
 
         
 
-        /// <summary>
-        /// _rearmargin
-        /// </summary>
-        public const string RearMargin = "_rearmarginline";
+        ///// <summary>
+        ///// _rearmargin
+        ///// </summary>
+        //public const string RearMargin = "_rearmarginline";
 
         /// <summary>
         /// _frontroad
@@ -211,72 +227,9 @@ namespace EdmontonDrawingValidator.Model
         public const string ValidateErrorMessage = "_errorvalidatemessage";
 
         /// <summary>
-        /// _accessoryuse
-        /// </summary>
-        public const string AccessoryUse = "_accessoryuse";
-
-        /// <summary>
-        /// _archproj
-        /// </summary>
-        public const string ArchProject = "_archproj";
-
-        /// <summary>
-        /// _atrium
-        /// </summary>
-        public const string Atrium = "_atrium";
-
-        /// <summary>
-        /// _beam
-        /// </summary>
-        public const string Beam = "_beam";
-
-        /// <summary>
-        /// _building
-        /// </summary>
-        public const string Building = "_building";
-
-        /// <summary>
-        /// _refugeearea
-        /// </summary>
-        public const string RefugeeArea = "_refugeearea";
-
-
-        /// <summary>
-        /// _chaja
-        /// </summary>
-        public const string Chaja = "_chaja";
-
-        ///// <summary>
-        ///// _commfsi
-        ///// </summary>
-        //public const string CommercialFSI = "_commfsi";
-
-        /// <summary>
-        /// _commbuiltupline
-        /// </summary>
-        public const string CommercialBuiltUpLine = "_commbuiltupline";
-
-        /// <summary>
-        /// _commonplot
-        /// </summary>
-        public const string CommonPlot = "_commonplot";
-
-        /// <summary>
         /// _driveway
         /// </summary>
         public const string DriveWay = "_driveway";
-
-        ///// <summary>
-        ///// _indfsi
-        ///// </summary>
-        //public const string IndustrialFSI = "_indfsi";
-
-        /// <summary>
-        /// _indbuiltupline
-        /// </summary>
-        public const string IndustrialBuiltUpLine = "_indbuiltupline";
-        //public const string SpecialFSI = "_specialfsi";
-        //public const string SpecialBuiltUpLine = "_specialbuiltupline";
 
         /// <summary>
         /// _door
@@ -297,7 +250,12 @@ namespace EdmontonDrawingValidator.Model
         /// <summary>
         /// _floor
         /// </summary>
-        public const string Floor = "_floor";
+        public const string FloorPlan = "_floorplan";
+
+        /// <summary>
+        /// _builtupline
+        /// </summary>
+        public const string BuiltupLine = "_builtupline";
 
         /// <summary>
         /// _floorinsection
@@ -310,74 +268,20 @@ namespace EdmontonDrawingValidator.Model
         public const string WithInMarginLine = "_withinmarginline";
 
         /// <summary>
-        /// _groundlevel
-        /// </summary>
-        public const string GroundLevel = "_groundlevel";
-
-        /// <summary>
-        /// _hfl
-        /// </summary>
-        public const string HighFloodLevel = "_hfl";
-
-        /// <summary>
-        /// _basementarea
-        /// </summary>
-        public const string BasementArea = "_basementarea";
-
-        /// <summary>
-        /// _lift
-        /// </summary>
-        public const string Lift = "_lift";
-
-        /// <summary>
         /// _mainroad
         /// </summary>
         public const string MainRoad = "_mainroad";
-
-        /// <summary>
-        /// _amalgamation
-        /// </summary>
-        public const string Amalgamation = "_amalgamation";
 
         /// <summary>
         /// _tree
         /// </summary>
         public const string Tree = "_tree";
 
-        /// <summary>
-        /// _marginline
-        /// </summary>
-        public const string MarginLine = "_marginline";
-
-        ///// <summary>
-        ///// _specialusefsi
-        ///// </summary>
-        //public const string SpecialUseFSI = "_specialusefsi";
-
-        /// <summary>
-        /// _specialusebuiltupline
-        /// </summary>
-        public const string SpecialUseBuiltUpLine = "_specialusebuiltupline";
-
-        /// <summary>
-        /// _netplot
-        /// </summary>
-        public const string NetPlot = "_netplot";
 
         /// <summary>
         /// _commonreferencepoint
         /// </summary>
         public const string CommonReferencePoint = "_commonreferencepoint";
-
-        /// <summary>
-        /// _ots
-        /// </summary>
-        public const string OTS = "_ots";
-
-        ///// <summary>
-        ///// _owt
-        ///// </summary>
-        //public const string OWT = "_owt";
 
         /// <summary>
         /// _parking
@@ -390,46 +294,6 @@ namespace EdmontonDrawingValidator.Model
         public const string Plot = "_plot";
 
         /// <summary>
-        /// _indivsubplot
-        /// </summary>
-        public const string IndividualSubPlot = "_indivsubplot";
-
-        /// <summary>
-        /// _subdivision
-        /// </summary>
-        public const string Subdivision = "_subdivision";
-
-        ///// <summary>
-        ///// _propose
-        ///// </summary>
-        //public const string ProposedWork = "_propose";
-
-        /// <summary>
-        /// _propwork
-        /// </summary>
-        public const string Propwork = "_propwork";
-
-        /// <summary>
-        /// _ramp
-        /// </summary>
-        public const string Ramp = "_ramp";
-
-        ///// <summary>
-        ///// _resifsi
-        ///// </summary>
-        //public const string ResidentFSI = "_resifsi";
-
-        /// <summary>
-        /// _resibuiltupline
-        /// </summary>
-        public const string ResidentBuiltUpLine = "_resibuiltupline";
-
-        /// <summary>
-        /// _room
-        /// </summary>
-        public const string Room = "_room";
-
-        /// <summary>
         /// _staircase
         /// </summary>
         public const string StairCase = "_staircase";
@@ -438,11 +302,6 @@ namespace EdmontonDrawingValidator.Model
         /// _section
         /// </summary>
         public const string Section = "_section";
-
-        /// <summary>
-        /// _sectionalitem
-        /// </summary>
-        public const string SectionalItem = "_sectionalitem";
 
         /// <summary>
         /// _siteplan
@@ -455,35 +314,14 @@ namespace EdmontonDrawingValidator.Model
         public const string UnitBUA = "_unitbua";
 
         /// <summary>
-        /// _void
-        /// </summary>
-        public const string Void = "_void";
-
-        /// <summary>
         /// _wall
         /// </summary>
         public const string Wall = "_wall";
 
         /// <summary>
-        /// _internalroad
-        /// </summary>
-        public const string ResidentInternalRoad = "_internalroad-r";
-
-        /// <summary>
-        /// _internalroad
-        /// </summary>
-        public const string NonResidentInternalRoad = "_internalroad-nr";
-
-
-        /// <summary>
         /// _passage
         /// </summary>
         public const string Passage = "_passage";
-
-        /// <summary>
-        /// _roadwidening
-        /// </summary>
-        public const string RoadWidening = "_roadwidening";
 
         /// <summary>
         /// _balcony
@@ -505,35 +343,10 @@ namespace EdmontonDrawingValidator.Model
         /// </summary>
         public const string Window = "_window";
 
-        /// <summary>
-        /// _Sanitation
-        /// </summary>
-        public const string Sanitation = "_sanitation";
-
-        /// <summary>
-        /// _RoadCurvature
-        /// </summary>
-        public const string RoadCurvature = "_roadcurvature";
-
         ///<summary>
         ///_PrintArea
         ///</summary>
         public const string PrintArea = "_printarea";
-
-        /// <summary>
-        /// _north
-        /// </summary>
-        public const string North = "_north";
-
-        /// <summary>
-        /// _loft
-        /// </summary>
-        public const string Loft = "_loft";
-
-        /// <summary>
-        /// _waterbody
-        /// </summary>
-        public const string WaterBody = "_waterbody";
 
         /// <summary>
         /// _NonOwnerPlot
@@ -545,36 +358,7 @@ namespace EdmontonDrawingValidator.Model
         /// </summary>
         public const string Connector = "_connector";
 
-        /// <summary>
-        /// _skywalk
-        /// </summary>
-        public const string SkyWalk = "_skywalk";
-
-        /// <summary>
-        /// DASHED
-        /// </summary>
-        public const string DashedLine = "DASHED"; //Dashed
-
-
-        /// <summary>
-        /// DASHED
-        /// </summary>
-        public const string LiftMachineRoomLine = "DASHED"; //Dashed
-
-        /// <summary>
-        /// CENTER
-        /// </summary>
-        public const string CenterLineCode = "CENTER";
-
-        /// <summary>
-        /// CENTER2
-        /// </summary>
-        public const string CenterLineCode2 = "CENTER2";
-
-        /// <summary>
-        /// beam
-        /// </summary>
-        public const string BeamText = "beam";
+        
 
         /// <summary>
         /// 8

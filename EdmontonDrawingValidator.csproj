@@ -2,8 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
-    <RootNamespace>EdmontonDrawingProcessor</RootNamespace>
-    <AssemblyName>EdmontonDrawingProcessor</AssemblyName>
+    <RootNamespace>EdmontonDrawingValidator</RootNamespace>
+    <AssemblyName>EdmontonDrawingValidator</AssemblyName>
     <ApplicationIcon>images\Cornmanthe3rd-Metronome-Media-illustrator.ico</ApplicationIcon>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>

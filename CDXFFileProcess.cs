@@ -1,4 +1,5 @@
 ﻿using EdmontonDrawingValidator.Model;
+using EdmontonDrawingValidator.Validator;
 using log4net;
 using log4net.Config;
 using Microsoft.Data.SqlClient;
@@ -11,13 +12,13 @@ using NetTopologySuite.Index.HPRtree;
 using Newtonsoft;
 using Newtonsoft.Json;
 using SharedClasses;
-using SharedClasses;
 using SharedClasses.Constants;
 using SharedClasses.PrintDimension;
 using SVPAS.LogUtility;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
@@ -31,6 +32,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -48,11 +50,19 @@ namespace EdmontonDrawingValidator
         protected bool bDeleteAfterProcess = true;
         protected bool bMoveAfterProcess = true;
 
+        // Add Unit validator instance
+        private Unit _validator;
+
+        public CDXFFileProcess()
+        {
+            _validator = new Unit();
+        }
+
         public async Task<int> ProcessStart(string DXFFilePathToProcess)
-        {  
+        {
             DateTime dtTaskStart = DateTime.Now;
             DxfProcessorInput dxfProcessorInput = new DxfProcessorInput();
- 
+
             StringBuilder sbHeaderProcessTask = new StringBuilder("");
             sbHeaderProcessTask.AppendLine("Task start time " + dtTaskStart.ToString("HH:mm:ss.fffff"));
             Console.WriteLine(DXFFilePathToProcess);
@@ -61,23 +71,6 @@ namespace EdmontonDrawingValidator
 
             DxfProcessorQueue objDXFFileQueueItem = JsonConvert.DeserializeObject<DxfProcessorQueue>(File.ReadAllText(DXFFilePathToProcess));
 
-            //Check if both report and validation false then just delete file and return
-            if (objDXFFileQueueItem.IsValidateDrawing == false && objDXFFileQueueItem.IsCreateReport == false)
-            {
-                if (File.Exists(DXFFilePathToProcess))
-                    File.Delete(DXFFilePathToProcess);
-
-                Console.WriteLine($"request with no drawing validation and no create report.");
-                return 0;
-            }
-
-            //if (string.IsNullOrWhiteSpace(objDXFFileQueueItem.ProjectType))
-            //{
-            //    Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Project type not found in input json");
-            //    return 0;
-            //}
-
-  
             string sFileNameInProcess = Path.GetFileNameWithoutExtension(objDXFFileQueueItem.DxfFilePath);
             string DXFFolder = Path.GetDirectoryName(objDXFFileQueueItem.DxfFilePath);
             DXFFolder = Path.Join(DXFFolder, "\\");
@@ -91,7 +84,10 @@ namespace EdmontonDrawingValidator
             string sRuleInputJsonFile = DXFFolder + sFileNameInProcess + "_rule.json";
             string sTimingFile = DXFFolder + sFileNameInProcess + "_ReportTiming.txt";
             string sFileLogFile = DXFFolder + sFileNameInProcess + "_log.txt";
-            string sRuleTesterInputJsonFile = General.RuleTesterInputFolder + sFileNameInProcess + "_ruleTesterInput.json";
+            string sDrawingDataHtmlFile = DXFFolder + sFileNameInProcess + "_DrawingData.html";
+            string sDrawingDataJsonFile = DXFFolder + sFileNameInProcess + "_DrawingData.json";
+            string sValidationReportFile = DXFFolder + sFileNameInProcess + "_validation.txt";
+            string sDataProcessFile = General.DrawingDataProcessorInputFolder + sFileNameInProcess + "_Input.json";
             string InputDXFFilePath = objDXFFileQueueItem.DxfFilePath;
             if (!System.IO.Directory.Exists(sFileOutputFolder))
                 System.IO.Directory.CreateDirectory(sFileOutputFolder);
@@ -107,8 +103,8 @@ namespace EdmontonDrawingValidator
 
             try
             {
-                Console.WriteLine($"File in process:{sFileNameInProcess} , Project type:{objDXFFileQueueItem.ProjectType}");
-                log.Info($"File in process:{sFileNameInProcess} , Project type:{objDXFFileQueueItem.ProjectType}");
+                Console.WriteLine($"File in process:{sFileNameInProcess}");
+                log.Info($"File in process:{sFileNameInProcess}");
 
                 DateTime dtDataReadStartTime = DateTime.Now;
                 DateTime dtDataReadEndTime = DateTime.Now;
@@ -124,11 +120,12 @@ namespace EdmontonDrawingValidator
                 bool IsDxfFileHasError = false;
                 List<string> lstErrorMessages = new List<string>();
                 List<string> logTiming = new List<string>();
+
                 if (lstResultWithText == null || lstResultWithText.Count == 0)
                 {
                     Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Data extracting going on");
                     logTiming.Add($"Data extract start " + DateTime.Now.ToString("HH:mm:ss.fff"));
-                    lstResultWithText = objProcess.ExtractDataFromDXF(sFileNameInProcess, InputDXFFilePath, sFileOutputFolder, bDoYouWantLayerDataFile, ref lstLayers, ref dictLayerDefaultColour, ref IsDxfFileHasError, ref lstErrorMessages); // pass only one by one file
+                    lstResultWithText = objProcess.ExtractDataFromDXF(sFileNameInProcess, InputDXFFilePath, sFileOutputFolder, bDoYouWantLayerDataFile, ref lstLayers, ref dictLayerDefaultColour, ref IsDxfFileHasError, ref lstErrorMessages);
                     logTiming.Add($"Data extract end " + DateTime.Now.ToString("HH:mm:ss.fff"));
                     Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Data extracting complete");
 
@@ -170,9 +167,8 @@ namespace EdmontonDrawingValidator
                             }
                         }
                     }
-                    //Remove duplicate text done
 
-                    // remove all validation error objects if exists in dxf
+                    // Remove duplicate text done
                     lstResultWithText = lstResultWithText.Where(x => x.LayerName.ToLower().Trim() != DxfLayersName.ValidateErrorMessage).ToList();
 
                     Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Table block begin and reference data extract");
@@ -181,25 +177,11 @@ namespace EdmontonDrawingValidator
                 }
 
                 Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Data formatting start");
- 
-                if (objDXFFileQueueItem.ProjectType == ProjectType.BuildingPermission || objDXFFileQueueItem.ProjectType == ProjectType.BuildingPermissionWithAdditionOrExtension ||
-                    objDXFFileQueueItem.ProjectType == ProjectType.RevisedWithExistingConstruction  || objDXFFileQueueItem.ProjectType == ProjectType.RevisedWithoutExistingConstruction) //17Mar2025 revised change
-                {
-                    //ProcessBuildingAndFloorForRangeNaming(ref lstResultWithText);
 
-                    //comment 09Jul2022
-                    ProcessToSwapLineXYCoordinateSort(ref lstResultWithText);
-
-                    //remove duplicate coordinate which are appears in sequence
-                    ProcessToClearDuplicateSequenceCoordinate(ref lstResultWithText);
-                }
-
-                //clean polygone which has 0 area CLEAR ALL POLYGON WHICH AREA IS 0 
+                ProcessToSwapLineXYCoordinateSort(ref lstResultWithText);
+                ProcessToClearDuplicateSequenceCoordinate(ref lstResultWithText);
                 ProcessToCleanZeroAreaPolygon(ref lstResultWithText);
-
-                //Do close polygon //29Nov2022
                 ProcessToClosePolygon(ref lstResultWithText);
-
                 MakeAllBulgePolyToProcess(ref lstResultWithText);
 
                 lstPrintDetailsBlocks = lstResultWithText.Where(x => x.LayerName.IsEquals(DxfLayersName.PrintArea)).ToList();
@@ -208,6 +190,31 @@ namespace EdmontonDrawingValidator
                 sbHeaderProcessTask.AppendLine("Data read end time " + dtDataReadEndTime.ToString("HH:mm:ss.fffff") + ", Sec: " + DateTime.Now.Subtract(dtDataReadStartTime).TotalSeconds + ", MS: " + dtDataReadEndTime.Subtract(dtDataReadStartTime).TotalMilliseconds);
                 sbHeaderProcessTask.AppendLine("-----------------------------------------------------------");
                 logTiming.Add($"Data clean end " + DateTime.Now.ToString("HH:mm:ss.fff"));
+
+                logTiming.Add($"Validation start " + DateTime.Now.ToString("HH:mm:ss.fff"));
+
+                // ============ VALIDATE ELEMENTS ============
+                //Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Validating DXF elements...");
+                //ValidationResult validationResult = ValidateAllElements(lstResultWithText);
+
+                //// Log validation results
+                //string validationReport = _validator.ExportValidationReport(validationResult, includeContext: true);
+                //Console.WriteLine(validationReport);
+                //File.WriteAllText(sValidationReportFile, validationReport);
+
+                //logTiming.Add($"Validation end " + DateTime.Now.ToString("HH:mm:ss.fff"));
+
+                //// If critical validation errors exist, you can handle them here
+                //if (!validationResult.IsValid)
+                //{
+                //    var criticalIssues = _validator.GetCriticalIssues(validationResult);
+                //    if (criticalIssues.Count > 0)
+                //    {
+                //        Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : WARNING - {criticalIssues.Count} critical validation issues found");
+                //        // Optionally stop processing or log warnings
+                //    }
+                //}
+                // ============ END VALIDATION ============
 
                 logTiming.Add($"Report start " + DateTime.Now.ToString("HH:mm:ss.fff"));
                 dxfProcessorInput.DataReadStartTime = dtDataReadStartTime;
@@ -221,12 +228,34 @@ namespace EdmontonDrawingValidator
                 Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Proposed coverage calculation going on....");
                 StringBuilder sbProposedCoverageArea = new StringBuilder("");
 
-
                 // Find distance between 
                 lstResultWithText.ForEach(x => x.LayerName = x.LayerName.ToLower());
 
+                logTiming.Add($"Drawing validation start " + DateTime.Now.ToString("HH:mm:ss.fff"));
+                List<DrawingValidateItem> lstDrawingAllValidateResult = new List<DrawingValidateItem>();
 
-                List<LayerInfo> lstMainRoadInfo = new List<LayerInfo>(); // lstResultWithText.Where(x => x.LayerName.ToLower() == DxfLayersName.FrontRoad).ToList();
+                DrawingValidateItem objDxfExtractResult = new DrawingValidateItem();
+                objDxfExtractResult.Name = RuleName.DXFExtractionError;
+                objDxfExtractResult.RuleOn = "DXF file";
+                objDxfExtractResult.RuleType = RuleType.Element;
+
+                if (lstErrorMessages != null && lstErrorMessages.Count() > 0)
+                {
+                    objDxfExtractResult.IsValid = false;
+                    foreach (string sMsg in lstErrorMessages)
+                    {
+                        objDxfExtractResult.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = sMsg
+                        });
+                    }
+                }
+                else
+                    objDxfExtractResult.IsValid = true;
+
+                lstDrawingAllValidateResult.Add(objDxfExtractResult);
+
+                List<LayerInfo> lstMainRoadInfo = new List<LayerInfo>();
 
                 List<LayerDataWithText> lstUnits = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.Unit, StringComparison.OrdinalIgnoreCase)).ToList();
                 List<LayerDataWithText> lstLot = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.Lot, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -238,219 +267,825 @@ namespace EdmontonDrawingValidator
                 List<LayerDataWithText> lstRearElevationplan = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.RearElevationplan, StringComparison.OrdinalIgnoreCase)).ToList();
                 List<LayerDataWithText> lstSide1Elevationplan = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.Side1Elevationplan, StringComparison.OrdinalIgnoreCase)).ToList();
                 List<LayerDataWithText> lstSide2Elevationplan = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.Side2Elevationplan, StringComparison.OrdinalIgnoreCase)).ToList();
-
-                List<LayerInfo> lstSiteplanInfo = objLayerExtractor.SetLayerInfo(lstSiteplan, DxfLayersName.SitePlan);
                 
+                List<LayerDataWithText> lstFloorplan = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.FloorPlan, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                DrawingValidateItem objFloorplanValidation = new DrawingValidateItem();
+
+                if (lstFloorplan.Count() > 0)
+                {
+                    List<LayerInfo> lstFloorplanInfo = objLayerExtractor.SetLayerInfo(lstFloorplan, DxfLayersName.FloorPlan);
+
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Unit, DxfLayersName.Unit, ref lstFloorplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.BuiltupLine, DxfLayersName.BuiltupLine, ref lstFloorplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.CommonReferencePoint, DxfLayersName.CommonReferencePoint, ref lstFloorplanInfo);
+
+                    if (lstFloorplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.Unit)) == false)
+                    {
+                        objFloorplanValidation.IsValid = false;
+                        objFloorplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Unit is missing in floor plan",
+                        });
+                    }
+                    if (lstFloorplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.BuiltupLine)) == false)
+                    {
+                        objFloorplanValidation.IsValid = false;
+                        objFloorplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Builtup line is missing in floor plan",
+                        });
+                    } 
+                    if (lstFloorplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.CommonReferencePoint)) == false)
+                    {
+                        objFloorplanValidation.IsValid = false;
+                        objFloorplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Common reference points are missing in floor plan",
+                        });
+                    }
+                    else
+                    {
+                        foreach (LayerInfo item in lstFloorplanInfo)
+                        {
+                            List<LayerInfo> lstItems = item.Child[DxfLayersName.CommonReferencePoint];
+                            bool redRef = false, yellowRef = false;
+                            foreach (LayerInfo commRef in lstItems)
+                            {
+                                if (commRef.Data.ColourCode == DxfLayersName.CommonRedRefPoint1ColourCode)
+                                    redRef = true;
+                                else if (commRef.Data.ColourCode == DxfLayersName.CommonYellowRefPoint2ColourCode)
+                                    yellowRef = true;
+                            }
+
+                            if (redRef == false)
+                            {
+                                objFloorplanValidation.IsValid = false;
+                                objFloorplanValidation.ErrorElements.Add(new ItemErrorDetails
+                                {
+                                    ErrorMessage = "Red common reference point is missing in floor plan",
+
+                                });
+                            }
+
+                            if (yellowRef == false)
+                            {
+                                objFloorplanValidation.IsValid = false;
+                                objFloorplanValidation.ErrorElements.Add(new ItemErrorDetails
+                                {
+                                    ErrorMessage = "Yellow common reference point is missing in floor plan",
+                                });
+                            }
+                        }
+                    }
+
+                }
+                else
+                {
+                    objFloorplanValidation.IsValid = false;
+                    objFloorplanValidation.ErrorElements.Add(new ItemErrorDetails
+                    {
+                        ErrorMessage = "Floor plan is missing",
+                    });
+                }
+
+                lstDrawingAllValidateResult.Add(objFloorplanValidation);
+
                 List<LayerInfo> lstFrontElevationplanInfo = objLayerExtractor.SetLayerInfo(lstFrontElevationplan, DxfLayersName.FrontElevationplan);
                 List<LayerInfo> lstRearElevationplanInfo = objLayerExtractor.SetLayerInfo(lstRearElevationplan, DxfLayersName.RearElevationplan);
                 List<LayerInfo> lstSide1ElevationplanInfo = objLayerExtractor.SetLayerInfo(lstSide1Elevationplan, DxfLayersName.Side1Elevationplan);
                 List<LayerInfo> lstSide2ElevationplanInfo = objLayerExtractor.SetLayerInfo(lstSide2Elevationplan, DxfLayersName.Side2Elevationplan);
 
-                List<LayerInfo> lstFourElevationplanForWallDoorInfo = new List<LayerInfo>();
-                if(lstFrontElevationplanInfo.Count() > 0)
-                    lstFourElevationplanForWallDoorInfo.AddRange(lstFrontElevationplanInfo);
+                DrawingValidateItem objElevationplanValidation = new DrawingValidateItem();
 
+                List<LayerInfo> lstFourElevationplanForWallDoorInfo = new List<LayerInfo>();
+                if (lstFrontElevationplanInfo.Count() > 0)
+                    lstFourElevationplanForWallDoorInfo.AddRange(lstFrontElevationplanInfo);
+                else
+                {
+                    objElevationplanValidation.IsValid = false;
+                    objElevationplanValidation.ErrorElements.Add(new ItemErrorDetails
+                    {
+                        ErrorMessage = "Front elevation plan is missing",
+                    });
+                }
+                
                 if (lstRearElevationplanInfo.Count() > 0)
                     lstFourElevationplanForWallDoorInfo.AddRange(lstRearElevationplanInfo);
-
+                else
+                {
+                    objElevationplanValidation.IsValid = false;
+                    objElevationplanValidation.ErrorElements.Add(new ItemErrorDetails
+                    {
+                        ErrorMessage = "Rear elevation plan is missing",
+                    });
+                }
                 if (lstSide1ElevationplanInfo.Count() > 0)
                     lstFourElevationplanForWallDoorInfo.AddRange(lstSide1ElevationplanInfo);
-
+                else
+                {
+                    objElevationplanValidation.IsValid = false;
+                    objElevationplanValidation.ErrorElements.Add(new ItemErrorDetails
+                    {
+                        ErrorMessage = "Side 1 elevation plan is missing",
+                    });
+                }
                 if (lstSide2ElevationplanInfo.Count() > 0)
                     lstFourElevationplanForWallDoorInfo.AddRange(lstSide2ElevationplanInfo);
+                else
+                {
+                    objElevationplanValidation.IsValid = false;
+                    objElevationplanValidation.ErrorElements.Add(new ItemErrorDetails
+                    {
+                        ErrorMessage = "Side 2 elevation plan is missing",
+                    });
+                }
 
-                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Unit, DxfLayersName.Unit, ref lstSiteplanInfo);
-                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Lot, DxfLayersName.Lot, ref lstSiteplanInfo);
-                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.FrontRoad, DxfLayersName.FrontRoad, ref lstSiteplanInfo);
-                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Garage, DxfLayersName.Garage, ref lstSiteplanInfo);
-                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Alley, DxfLayersName.Alley, ref lstSiteplanInfo);
+                lstDrawingAllValidateResult.Add(objElevationplanValidation);
+
+                DrawingValidateItem objSiteplanValidation = new DrawingValidateItem();
+
+                if (lstSiteplan == null || lstSiteplan.Count() == 0)
+                {
+                    objSiteplanValidation.IsValid = false;
+                    objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                    {
+                        ErrorMessage = "Siteplan is missing",
+                    });
+                }
+                else
+                {
+                    List<LayerInfo> lstSiteplanInfo = objLayerExtractor.SetLayerInfo(lstSiteplan, DxfLayersName.SitePlan);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Unit, DxfLayersName.Unit, ref lstSiteplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Lot, DxfLayersName.Lot, ref lstSiteplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.FrontRoad, DxfLayersName.FrontRoad, ref lstSiteplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Garage, DxfLayersName.Garage, ref lstSiteplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Alley, DxfLayersName.Alley, ref lstSiteplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.StairCase, DxfLayersName.StairCase, ref lstSiteplanInfo);
+                    objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.CommonReferencePoint, DxfLayersName.CommonReferencePoint, ref lstSiteplanInfo);
+
+                    if(lstSiteplanInfo.Any(x=>x.Child.ContainsKey(DxfLayersName.StairCase))==false)
+                    {
+                        objSiteplanValidation.IsValid = false;
+                        objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Staircase is missing in siteplan",
+                        });
+                    }
+                    if (lstSiteplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.Unit)) == false)
+                    {
+                        objSiteplanValidation.IsValid = false;
+                        objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Unit is missing in siteplan",
+                        });
+                    }
+                    if (lstSiteplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.Lot)) == false)
+                    {
+                        objSiteplanValidation.IsValid = false;
+                        objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Lot is missing in siteplan",
+                        });
+                    }
+                    if (lstSiteplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.FrontRoad)) == false)
+                    {
+                        objSiteplanValidation.IsValid = false;
+                        objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Front road is missing in siteplan",
+                        });
+                    }
+                    if (lstSiteplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.CommonReferencePoint)) == false)
+                    {
+                        objSiteplanValidation.IsValid = false;
+                        objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Common reference points are missing in siteplan",
+                        });
+                    }
+                    else
+                    {
+                        foreach (LayerInfo item in lstSiteplanInfo)
+                        {
+                            List<LayerInfo> lstItems = item.Child[DxfLayersName.CommonReferencePoint];
+                            bool redRef = false, yellowRef = false;
+                            foreach (LayerInfo commRef in lstItems)
+                            {
+                                if (commRef.Data.ColourCode == DxfLayersName.CommonRedRefPoint1ColourCode)
+                                    redRef = true;
+                                else if (commRef.Data.ColourCode == DxfLayersName.CommonYellowRefPoint2ColourCode)
+                                    yellowRef = true;
+                            }
+
+                            if(redRef == false)
+                            {
+                                objSiteplanValidation.IsValid = false;
+                                objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                                {
+                                    ErrorMessage = "Red common reference point is missing in siteplan",
+                                     
+                                });
+                            }
+                            
+                            if (yellowRef == false)
+                            {
+                                objSiteplanValidation.IsValid = false;
+                                objSiteplanValidation.ErrorElements.Add(new ItemErrorDetails
+                                {
+                                    ErrorMessage = "Yellow common reference point is missing in siteplan",
+                                });
+                            }
+                        }                        
+                    }
+
+                }
+
+                lstDrawingAllValidateResult.Add(objSiteplanValidation);
+
+                DrawingValidateItem objSectionPlanDrawingValidation = new DrawingValidateItem();
+                SectionalDataValidation(lstResultWithText, ref objSectionPlanDrawingValidation);
+
+                lstDrawingAllValidateResult.Add(objSectionPlanDrawingValidation);
 
                 // Extract data
                 objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Wall, DxfLayersName.Wall, ref lstFourElevationplanForWallDoorInfo);
                 objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Door, DxfLayersName.Door, ref lstFourElevationplanForWallDoorInfo);
                 objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Window, DxfLayersName.Window, ref lstFourElevationplanForWallDoorInfo);
-                
+                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.Unit, DxfLayersName.Unit, ref lstFourElevationplanForWallDoorInfo);
 
-                if (lstSiteplanInfo.Count > 0)
+
+                // Text file missing...
+                DrawingValidateItem objTextValidation = new DrawingValidateItem();
+                ValidateMissingText(lstResultWithText, objTextValidation);
+                lstDrawingAllValidateResult.Add(objTextValidation);
+
+                DrawingValidateItem objElevationValidation = new DrawingValidateItem();
+                GetWallFromElevationInformation(lstFourElevationplanForWallDoorInfo, ref objElevationValidation);
+                lstDrawingAllValidateResult.Add(objElevationValidation);
+
+                ColourDictionary colorDictionary = new ColourDictionary();
+
+                if (lstResultWithText == null || lstResultWithText.Count() == 0)
                 {
-                    //var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                    //if (lstSiteplanInfo.Any(x => x.Child.ContainsKey(DxfLayersName.Alley)))
-                    if (lstSiteplanInfo.Any(x => x.Child.Keys.Any(k => string.Equals(k, DxfLayersName.Alley, StringComparison.OrdinalIgnoreCase))))
-                        dxfProcessorInput.IsAlleyExist = true;
-                }
+                    List<Cordinates> lstCords = new List<Cordinates>();
+                    List<LayerTextInfo> lstText = new List<LayerTextInfo>();
 
-                SectionPlanData objSelectionPlanData = new SectionPlanData();
-                GetSectionalData(lstResultWithText, ref objSelectionPlanData);
-                dxfProcessorInput.SectionalData = objSelectionPlanData;
-
-                //LotInformation objLotInformation = new LotInformation();
-                //GetLotInformation(lstSiteplanInfo, ref objLotInformation);
-                //dxfProcessorInput.LotData = objLotInformation;
-
-                UnitInformation objUnitInformation = new UnitInformation();
-                GetUnitInformation(lstSiteplanInfo, ref objUnitInformation);
-                dxfProcessorInput.UnitData = objUnitInformation;
-
-                GarageInformation objGarageInformation = new GarageInformation();
-                bool IsGarageExists = false;
-                GetGarageInformation(lstSiteplanInfo, ref objGarageInformation, ref IsGarageExists);
-                dxfProcessorInput.GarageData = objGarageInformation;
-                dxfProcessorInput.IsGarageExists = IsGarageExists;
-
-                AccessoryInformation objAccessoryInformation = new AccessoryInformation();
-                GetAccessoryInformation(lstSiteplanInfo, ref objAccessoryInformation);
-                dxfProcessorInput.AccessoryUnitInfo = objAccessoryInformation;
-
-                FlankingInformation objFlankingInformation = new FlankingInformation();
-                SetBackInformation objSetBackData = new SetBackInformation();
-                LotInformation objLotInformation = new LotInformation();
-                GetSetBack(lstSiteplanInfo, lstSiteplanRearMarginLine, ref objSetBackData,ref objLotInformation,ref objFlankingInformation);
-                dxfProcessorInput.SetBackInfo = objSetBackData;
-                dxfProcessorInput.LotData = objLotInformation;
-                dxfProcessorInput.FlankingInfo = objFlankingInformation;
-
-
-                //SitePlanExit
-                UnitWallDoorWindowInformation objUnitWallDoorWindowInformation = new UnitWallDoorWindowInformation();
-                GetWallFromElevationInformation(lstFourElevationplanForWallDoorInfo, ref objUnitWallDoorWindowInformation);
-                //dxfProcessorInput.UnitWallDoorWindowInformation = objUnitWallDoorWindowInformation;
-                //
-                if (objUnitWallDoorWindowInformation != null && objUnitWallDoorWindowInformation.UnitsWall.Count() > 0)
-                {
-                    string[] arrElevation = new string[] { DxfLayersName.FrontElevationplan, DxfLayersName.RearElevationplan, DxfLayersName.Side1Elevationplan, DxfLayersName.Side2Elevationplan };
-                    foreach (string str in arrElevation)
+                    lstCords.Add(new Cordinates
                     {
+                        X = 1,
+                        Y = 10
+                    });
 
-                        // Calculate Front wall,door and window
-                        List<SingleUnitWallDoorWindowInformation> lstFront = objUnitWallDoorWindowInformation.UnitsWall.Where(x => string.Equals(x.LayerName, str)).ToList();
+                    lstText.Add(new LayerTextInfo
+                    {
+                        ColourCode = "1",
+                        Command = DxfLayersName.Text,
+                        Coordinates = lstCords,
+                        LayerName = DxfLayersName.FloorInSection,
+                        Text = "Valid layer missing in drawing"
+                    });
 
-                        foreach (SingleUnit objUnit in dxfProcessorInput.UnitData.Units)
-                        {
-                            if (str == DxfLayersName.FrontElevationplan)
-                            {
-                                objUnit.FrontWallArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.WallArea); //Wall
-                                objUnit.FrontWindowArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Window); //Window
-                                objUnit.FrontDoorArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Door); //Door
-
-                                objUnit.FrontWallRatio = ((objUnit.FrontWindowArea + objUnit.FrontDoorArea) * 100) / objUnit.FrontWallArea;
-                            }
-                            if (str == DxfLayersName.RearElevationplan)
-                            {
-                                objUnit.RearWallArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.WallArea); //Wall
-                                objUnit.RearWindowArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Window); //Window
-                                objUnit.RearDoorArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Door); //Door
-
-                                objUnit.RearWallRatio = ((objUnit.RearWindowArea + objUnit.RearDoorArea) * 100) / objUnit.RearWallArea;
-                            }
-                            if (str ==  DxfLayersName.Side1Elevationplan)
-                            {
-                                objUnit.Side1WallArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.WallArea); //Wall
-                                objUnit.Side1WindowArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Window); //Window
-                                objUnit.Side1DoorArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Door); //Door
-
-                                objUnit.Side1WallRatio = ((objUnit.Side1WindowArea + objUnit.Side1DoorArea) * 100) / objUnit.Side1WallArea;
-                            }
-                            if (str == DxfLayersName.Side2Elevationplan)
-                            {
-                                objUnit.Side2WallArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.WallArea); //Wall
-                                objUnit.Side2WindowArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Window); //Window
-                                objUnit.Side2DoorArea = lstFront.Where(x => string.Equals(x.Name, objUnit.Name, StringComparison.OrdinalIgnoreCase)).ToList().Sum(x => x.Door); //Door
-
-                                objUnit.Side2WallRatio = ((objUnit.Side2WindowArea + objUnit.Side2DoorArea) * 100) / objUnit.Side2WallArea;
-                            }
-
-
-                        } 
-                    }
+                    lstResultWithText.Add(new LayerDataWithText
+                    {
+                        Coordinates = lstCords,
+                        ColourCode = "1",
+                        Command = DxfLayersName.PolyLine,
+                        LayerName = DxfLayersName.FloorInSection,
+                        LineType = "",
+                        TextInfoData = lstText
+                    });
                 }
+                
+                if (lstResultWithText != null && lstResultWithText.Count > 0)
+                {
+                    List<LayerDataWithText> lstUsedLayer = lstResultWithText.Where(x => !string.IsNullOrWhiteSpace(x.LayerName) && x.LayerName.StartsWith("_")).ToList();
+                    //General objGeneral = new General();
+                    List<string> lstAllLayer = AllLayersNameForDrawing();
 
-                logTiming.Add($"Report end " + DateTime.Now.ToString("HH:mm:ss.fff"));
+                    lstUsedLayer = lstUsedLayer.Where(x => lstAllLayer.Contains(x.LayerName.Trim().ToLower())).ToList();
+
+                    List<LayerDataWithText> lstCircle = lstUsedLayer.Where(x => x.IsCircle).ToList();
+                    List<LayerDataWithText> lstBulge = lstUsedLayer.Where(x => x.HasBulge).ToList();
+                    List<LayerDataWithText> lstPolyLines = lstUsedLayer.Where(x => !x.IsCircle && !x.HasBulge).ToList();
+
+                    //remove other details which has no cords
+                    //lstCircle = lstCircle.Where(x => x.TextInfoData != null || x.LayerName.ToLower() != DxfLayersName.OtherDetails).ToList();
+                    //lstBulge = lstBulge.Where(x => x.TextInfoData != null || x.LayerName.ToLower() != DxfLayersName.OtherDetails).ToList();
+                    //lstPolyLines = lstPolyLines.Where(x => x.TextInfoData != null || x.LayerName.ToLower() != DxfLayersName.OtherDetails).ToList();
+
+                    List<string> lstDistinctLayer = lstPolyLines.Select(x => x.LayerName).ToList().Distinct().ToList<string>();
+                    List<DrawingData> lstDrawingData = new List<DrawingData>();
+                    double MinX = double.MaxValue, MaxX = double.MinValue, MinY = double.MaxValue, MaxY = double.MinValue;
+
+                    if (lstCircle != null && lstCircle.Count > 0)
+                    {
+                        foreach (LayerDataWithText circleItem in lstCircle)
+                        {
+
+                            if (circleItem.LayerName.ToLower().Trim() == DxfLayersName.OtherDetail)
+                            {
+                                string sText = ExtractLayerText(circleItem, false, "");
+                                if (string.IsNullOrWhiteSpace(sText))
+                                    continue;
+
+                                if (!regexOtherDetailsTitleText.IsMatch(sText) && !regexOtherDetailsElevationTitleText.IsMatch(sText) && !regexOtherDetailsKeyPlanTitleText.IsMatch(sText))
+                                    continue;
+                            }
+
+                            DrawingData objDrawingData = new DrawingData();
+
+                            objDrawingData.LayerName = circleItem.LayerName;
+
+                            if (circleItem.TextInfoData != null && circleItem.TextInfoData.Count > 0)
+                            {
+                                LayerTextInfo textInfo = new LayerTextInfo();
+                                try
+                                {
+                                    if (circleItem.TextInfoData.Count > 0)
+                                        textInfo = circleItem.TextInfoData.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList().Last();
+                                }
+                                catch { }
+
+                                objDrawingData.TextInfo = new DrawingTextData
+                                {
+                                    Text = textInfo.Text, //circleItem.TextInfoData[0].Text,
+                                    Point = new DrawingPoint
+                                    {
+                                        X = textInfo.Coordinates[0].X, // circleItem.TextInfoData[0].Coordinates[0].X,
+                                        Y = textInfo.Coordinates[0].Y //circleItem.TextInfoData[0].Coordinates[0].Y,
+                                    }
+                                };
 
 
-                dxfProcessorInput.SiteCoverageInfo.AccessoryRoomArea = 0;
-                if(dxfProcessorInput.IsGarageExists)
-                    dxfProcessorInput.SiteCoverageInfo.GarageArea = objGarageInformation.GarageDistanceWithUnit.Sum(x => x.Area);
+                                //SetMinMaxValue(circleItem.TextInfoData[0].Coordinates[0].X, circleItem.TextInfoData[0].Coordinates[0].Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                                SetMinMaxValue(objDrawingData.TextInfo.Point.X, objDrawingData.TextInfo.Point.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                            }
 
-                dxfProcessorInput.SiteCoverageInfo.TotalUnitArea = dxfProcessorInput.UnitData.Units.Sum(x=>x.Area);
+                            DrawingDataSet objData = new DrawingDataSet();
+                            objData.Radius = circleItem.Radius;
+                            objData.CenterPoint = new DrawingPoint { X = circleItem.CenterPoint.X, Y = circleItem.CenterPoint.Y };
+                            objData.IsCircle = true;
+                            if (circleItem.StartAngle != circleItem.EndAngle)
+                            {
+                                objData.StartAngle = circleItem.StartAngle;
+                                objData.EndAngle = circleItem.EndAngle;
+                            }
+                            else
+                            {
+                                objData.StartAngle = 0d;
+                                objData.EndAngle = 360d;
+                            }
 
-                dxfProcessorInput.SiteCoverageInfo.SiteArea = objLotInformation.Area;
-                dxfProcessorInput.SiteCoverageInfo.AccessoryRoomArea = objAccessoryInformation.AccessoryUnit.Sum(x => x.Area);
+                            if (!string.IsNullOrWhiteSpace(circleItem.ColourCode))
+                            {
+                                try
+                                {
+                                    AutocadColourCode objAutocadColourCode = colorDictionary.GetColourDetails(Math.Abs(int.Parse(circleItem.ColourCode)));
+                                    if (objAutocadColourCode.AutocadColourIndex == null)
+                                        objData.ColourCode = null;
+                                    else
+                                        objData.ColourCode = objAutocadColourCode;
+                                }
+                                catch (Exception ex)
+                                {
+                                    string ss = ex.Message;
+                                }
+                            }
+                            else
+                                objData.ColourCode = null;
 
+                            objDrawingData.Data = objData;
+
+                            lstDrawingData.Add(objDrawingData);
+                        }
+                    }
+
+                    if (lstPolyLines != null && lstPolyLines.Count > 0)
+                    {
+                        foreach (LayerDataWithText polyItem in lstPolyLines)
+                        {
+                            if (polyItem.LayerName.ToLower().Trim() == DxfLayersName.OtherDetail)
+                            {
+                                string sText = ExtractLayerText(polyItem, false, "");
+                                if (string.IsNullOrWhiteSpace(sText))
+                                    continue;
+
+                                if (!regexOtherDetailsTitleText.IsMatch(sText) && !regexOtherDetailsElevationTitleText.IsMatch(sText) && !regexOtherDetailsKeyPlanTitleText.IsMatch(sText))
+                                    continue;
+                            }
+
+                            DrawingData objDrawingData = new DrawingData();
+
+                            objDrawingData.LayerName = polyItem.LayerName;
+
+                            if (polyItem.TextInfoData != null && polyItem.TextInfoData.Count > 0)
+                            {
+                                LayerTextInfo textInfo = new LayerTextInfo();
+                                try
+                                {
+                                    if (polyItem.TextInfoData.Count > 0)
+                                        textInfo = polyItem.TextInfoData.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList().Last();
+                                }
+                                catch { }
+                                objDrawingData.TextInfo = new DrawingTextData
+                                {
+                                    Text = textInfo.Text, //polyItem.TextInfoData[0].Text,
+                                    Point = new DrawingPoint
+                                    {
+                                        X = textInfo.Coordinates[0].X, //polyItem.TextInfoData[0].Coordinates[0].X,
+                                        Y = textInfo.Coordinates[0].Y //polyItem.TextInfoData[0].Coordinates[0].Y,
+                                    }
+                                };
+
+                                SetMinMaxValue(objDrawingData.TextInfo.Point.X, objDrawingData.TextInfo.Point.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                            }
+
+
+                            DrawingDataSet objData = new DrawingDataSet();
+                            if (!string.IsNullOrWhiteSpace(polyItem.ColourCode))
+                            {
+                                AutocadColourCode objAutocadColourCode = colorDictionary.GetColourDetails(int.Parse(polyItem.ColourCode));
+                                if (objAutocadColourCode == null || objAutocadColourCode.AutocadColourIndex == null)
+                                    objData.ColourCode = null;
+                                else
+                                    objData.ColourCode = objAutocadColourCode;
+                            }
+                            else
+                                objData.ColourCode = null;
+
+                            if (polyItem.Coordinates != null && polyItem.Coordinates.Count > 0)
+                            {
+                                objData.Points = new List<DrawingPoint>();
+                                foreach (Cordinates cords in polyItem.Coordinates)
+                                {
+                                    objData.Points.Add(new DrawingPoint
+                                    {
+                                        X = cords.X,
+                                        Y = cords.Y
+                                    });
+
+                                    SetMinMaxValue(cords.X, cords.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                                }
+
+                                if (!CheckLineTypeIsCenterLine(polyItem.LineType) && polyItem.Coordinates.Count > 4 && polyItem.Command.ToLower().IndexOf("poly") > -1)
+                                {
+                                    //if (!IsCordinateAreSame(polyItem.Coordinates[0], polyItem.Coordinates[polyItem.Coordinates.Count - 1]))
+                                    if (!polyItem.Coordinates[0].Equals(polyItem.Coordinates[polyItem.Coordinates.Count - 1]))
+                                    {
+                                        objData.Points.Add(new DrawingPoint
+                                        {
+                                            X = polyItem.Coordinates[0].X,
+                                            Y = polyItem.Coordinates[0].Y
+                                        });
+                                    }
+                                }
+                                else if (CheckLineTypeIsCenterLine(polyItem.LineType) && polyItem.Coordinates.Count() > 1) // && polyItem.Coordinates.Count > 4 && polyItem.Command.ToLower().IndexOf("poly") > 0)
+                                {
+                                    //while (IsCordinateAreSame(objData.Points[0], objData.Points[objData.Points.Count - 1]))
+                                    while (objData.Points[0].Equals(objData.Points[objData.Points.Count - 1]))
+                                    {
+                                        objData.Points.RemoveAt(objData.Points.Count - 1);
+                                        if (objData.Points.Count == 1)
+                                            break;
+                                    }
+                                }
+                            }
+
+                            objDrawingData.Data = objData;
+
+                            lstDrawingData.Add(objDrawingData);
+                        }
+                    }
+
+                    //again process bulge  09Aug2022
+                    if (lstBulge != null && lstBulge.Count > 0)
+                    {
+                        foreach (LayerDataWithText bulgeItem in lstBulge)
+                        {
+
+                            if (bulgeItem.LayerName.ToLower().Trim() == DxfLayersName.OtherDetail)
+                            {
+                                string sText = ExtractLayerText(bulgeItem, false, "");
+                                if (string.IsNullOrWhiteSpace(sText))
+                                    continue;
+
+                                if (!regexOtherDetailsTitleText.IsMatch(sText) && !regexOtherDetailsElevationTitleText.IsMatch(sText) && !regexOtherDetailsKeyPlanTitleText.IsMatch(sText))
+                                    continue;
+                            }
+
+                            DrawingData objDrawingData = new DrawingData();
+                            objDrawingData.LayerName = bulgeItem.LayerName;
+                            if (bulgeItem.TextInfoData != null && bulgeItem.TextInfoData.Count > 0)
+                            {
+                                LayerTextInfo textInfo = new LayerTextInfo();
+                                try
+                                {
+                                    if (bulgeItem.TextInfoData.Count > 0)
+                                        textInfo = bulgeItem.TextInfoData.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList().Last();
+                                }
+                                catch { }
+                                objDrawingData.TextInfo = new DrawingTextData
+                                {
+                                    Text = textInfo.Text, //bulgeItem.TextInfoData[0].Text,
+                                    Point = new DrawingPoint
+                                    {
+                                        X = textInfo.Coordinates[0].X, // bulgeItem.TextInfoData[0].Coordinates[0].X,
+                                        Y = textInfo.Coordinates[0].Y //bulgeItem.TextInfoData[0].Coordinates[0].Y,
+                                    }
+                                };
+                            }
+
+                            DrawingDataSet objData = new DrawingDataSet();
+                            //objData.HasBulge = true;
+                            objData.Points = new List<DrawingPoint>();
+
+                            if (!string.IsNullOrWhiteSpace(bulgeItem.ColourCode))
+                            {
+                                try
+                                {
+                                    AutocadColourCode objAutocadColourCode = colorDictionary.GetColourDetails(int.Parse(bulgeItem.ColourCode));
+                                    if (objAutocadColourCode == null || objAutocadColourCode.AutocadColourIndex == null)
+                                        objData.ColourCode = null;
+                                    else
+                                        objData.ColourCode = objAutocadColourCode;
+                                }
+                                catch
+                                {
+                                    objData.ColourCode = null;
+                                }
+                            }
+                            else
+                                objData.ColourCode = null;
+
+                            if (bulgeItem.CoordinateWithBulge != null && bulgeItem.CoordinateWithBulge.Count > 0)
+                            {
+                                objData.PointsWithBulgeValue = new List<DrawingDataForBulge>();
+                                foreach (BulgeItem bulgeDataItem in bulgeItem.CoordinateWithBulge)
+                                {
+                                    if (bulgeDataItem.IsBulgeValue)
+                                    {
+                                        try
+                                        {
+                                            //if (!IsCordinateAreSame(bulgeDataItem.ItemValue.StartPoint, bulgeDataItem.ItemValue.EndPoint))
+                                            if (!bulgeDataItem.ItemValue.StartPoint.Equals(bulgeDataItem.ItemValue.EndPoint))
+                                            {
+                                                try
+                                                {
+                                                    // added bulge value > 500 to avoid time taking issue and memory too
+                                                    if (bulgeDataItem.ItemValue.Bulge == 0 || bulgeDataItem.ItemValue.Bulge > 500)
+                                                    {
+                                                        objData.Points.Add(new DrawingPoint
+                                                        {
+                                                            X = bulgeDataItem.ItemValue.StartPoint.X,
+                                                            Y = bulgeDataItem.ItemValue.StartPoint.Y
+                                                        });
+
+                                                        objData.Points.Add(new DrawingPoint
+                                                        {
+                                                            X = bulgeDataItem.ItemValue.EndPoint.X,
+                                                            Y = bulgeDataItem.ItemValue.EndPoint.Y
+                                                        });
+
+                                                        SetMinMaxValue(bulgeDataItem.ItemValue.StartPoint.X, bulgeDataItem.ItemValue.StartPoint.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+
+                                                        SetMinMaxValue(bulgeDataItem.ItemValue.EndPoint.X, bulgeDataItem.ItemValue.EndPoint.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                                                    }
+                                                    else
+                                                    {
+                                                        ArcSegment arc = new ArcSegment(bulgeDataItem.ItemValue.StartPoint, bulgeDataItem.ItemValue.EndPoint, bulgeDataItem.ItemValue.Bulge);
+                                                        List<Cordinates> lstCoordinates = arc.GetArcPoints();
+                                                        foreach (Cordinates cord in lstCoordinates)
+                                                        {
+                                                            objData.Points.Add(new DrawingPoint
+                                                            {
+                                                                X = cord.X,
+                                                                Y = cord.Y
+                                                            });
+
+                                                            SetMinMaxValue(cord.X, cord.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                                                        }
+                                                    }
+                                                }
+                                                catch (Exception exBulgeEx)
+                                                {
+                                                    Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Exception DrawingData write: " + exBulgeEx.Message);
+                                                    Console.WriteLine(exBulgeEx.StackTrace);
+                                                }
+                                            }
+                                        }
+                                        catch (Exception exBulge)
+                                        {
+                                            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Exception DrawingData write: " + exBulge.Message);
+                                            Console.WriteLine(exBulge.StackTrace);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        objData.Points.Add(new DrawingPoint
+                                        {
+                                            X = bulgeDataItem.ItemValue.StartPoint.X,
+                                            Y = bulgeDataItem.ItemValue.StartPoint.Y
+                                        });
+
+                                        SetMinMaxValue(bulgeDataItem.ItemValue.StartPoint.X, bulgeDataItem.ItemValue.StartPoint.Y, ref MinX, ref MaxX, ref MinY, ref MaxY);
+                                    }
+                                }
+                            }
+
+                            if (!CheckLineTypeIsCenterLine(bulgeItem.LineType) && bulgeItem.Command.ToLower().IndexOf("poly") > -1)
+                            {
+                                //if (!IsCordinateAreSame(objData.Points[0], objData.Points[objData.Points.Count - 1]))
+                                if (!objData.Points[0].Equals(objData.Points[objData.Points.Count - 1]))
+                                {
+                                    objData.Points.Add(new DrawingPoint
+                                    {
+                                        X = objData.Points[0].X,
+                                        Y = objData.Points[0].Y
+                                    });
+                                }
+                            }
+                            else if (CheckLineTypeIsCenterLine(bulgeItem.LineType) && bulgeItem.Coordinates.Count > 2) // && bulgeItem.Command.ToLower().IndexOf("poly") > 0)
+                            {
+                                //while (IsCordinateAreSame(objData.Points[0], objData.Points[objData.Points.Count - 1]))
+                                while (objData.Points[0].Equals(objData.Points[objData.Points.Count - 1]))
+                                {
+                                    objData.Points.RemoveAt(objData.Points.Count - 1);
+                                    if (objData.Points.Count == 1)
+                                        break;
+                                }
+                            }
+
+                            objDrawingData.Data = objData;
+                            lstDrawingData.Add(objDrawingData);
+                        }
+                    }
+
+
+                    if (lstDrawingAllValidateResult != null && lstDrawingAllValidateResult.Count > 0)
+                    {
+                        try
+                        {
+                            foreach (DrawingValidateItem drawingValidationItem in lstDrawingAllValidateResult)
+                            {
+                                if (drawingValidationItem.IsValid)
+                                    continue;
+
+                                foreach (ItemErrorDetails errItem in drawingValidationItem.ErrorElements)
+                                {
+                                    if (errItem.ElementPositionCoordinate == null || errItem.ElementPositionCoordinate.Count == 0)
+                                    {
+                                        DrawingData tmpDrawing1 = new DrawingData();
+                                        tmpDrawing1.LayerName = DxfLayersName.ValidateErrorMessage;
+                                        tmpDrawing1.Data = new DrawingDataSet();
+                                        tmpDrawing1.Data.HasBulge = false;
+                                        tmpDrawing1.Data.IsCircle = false;
+                                        tmpDrawing1.TextInfo = new DrawingTextData();
+                                        tmpDrawing1.TextInfo.Point = null;
+                                        tmpDrawing1.TextInfo.Text = errItem.ErrorMessage;
+
+                                        lstDrawingData.Add(tmpDrawing1);
+
+                                        continue;
+                                    }
+
+                                    DrawingData tmpDrawing = new DrawingData();
+                                    tmpDrawing.LayerName = DxfLayersName.ValidateErrorMessage;
+                                    tmpDrawing.Data = new DrawingDataSet();
+                                    tmpDrawing.Data.HasBulge = false;
+                                    tmpDrawing.Data.IsCircle = false;
+
+                                    if (errItem.ElementPositionCoordinate != null && errItem.ElementPositionCoordinate.Count > 0)
+                                        tmpDrawing.Data.Points = new List<DrawingPoint>();
+
+                                    foreach (Cordinates cords in errItem.ElementPositionCoordinate)
+                                        tmpDrawing.Data.Points.Add(new DrawingPoint { X = cords.X, Y = cords.Y });
+
+                                    tmpDrawing.TextInfo = new DrawingTextData();
+                                    tmpDrawing.TextInfo.Point = new DrawingPoint();
+                                    tmpDrawing.TextInfo.Point = tmpDrawing.Data.Points.First();
+                                    tmpDrawing.TextInfo.Text = errItem.ErrorMessage;
+
+                                    lstDrawingData.Add(tmpDrawing);
+                                }
+                            }
+                        }
+                        catch (Exception exDrawingData)
+                        {
+                            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Exception DrawingData write: " + exDrawingData.Message);
+                            Console.WriteLine(exDrawingData.StackTrace);
+                        }
+                    }
+
+                    AllDrawingData objAllDrawingData = new AllDrawingData();
+
+
+                    //calculate drawing data minimum and maximum 
+                    MinX = 0; MinY = 0; MaxX = 0; MaxY = 0;
+                    bool bFirst = true;
+                    string[] arrLayerForMaxMin = new string[] { DxfLayersName.SitePlan, DxfLayersName.FloorPlan, DxfLayersName.Sectionplan, DxfLayersName.Side1Elevationplan, DxfLayersName.Side2Elevationplan, DxfLayersName.FrontElevationplan, DxfLayersName.RearElevationplan };
+                    foreach (string layerName in arrLayerForMaxMin)
+                    {
+                        // comment below lines 22Apr2023
+                        //if (layerName.ToLower().Trim() == DxfLayersName.OtherDetail)
+                        //    continue;
+
+                        List<LayerDataWithText> lstLayerEntities = lstResultWithText.Where(x => x.LayerName.Trim().ToLower().Equals(layerName)).ToList();
+                        if (lstLayerEntities != null && lstLayerEntities.Count > 0)
+                        {
+                            foreach (LayerDataWithText item in lstLayerEntities)
+                            {
+                                if (item == null || item.Coordinates == null || item.Coordinates.Count == 0 || string.IsNullOrWhiteSpace(item.LayerName) || !item.LayerName.Trim().StartsWith("_"))
+                                    continue;
+
+                                if (item.LayerName.ToLower().Trim() == DxfLayersName.OtherDetail)
+                                {
+                                    string sText = ExtractLayerText(item, false, "");
+                                    if (string.IsNullOrWhiteSpace(sText))
+                                        continue;
+
+                                    if (!regexOtherDetailsTitleText.IsMatch(sText) && !regexOtherDetailsElevationTitleText.IsMatch(sText) && !regexOtherDetailsKeyPlanTitleText.IsMatch(sText))
+                                        continue;
+                                }
+
+                                double minXValue = item.Coordinates.Min(x => x.X);
+                                double maxXValue = item.Coordinates.Max(x => x.X);
+                                double minYValue = item.Coordinates.Min(x => x.Y);
+                                double maxYValue = item.Coordinates.Max(x => x.Y);
+
+                                if (bFirst)
+                                {
+                                    MinX = minXValue;
+                                    MinY = minYValue;
+                                    MaxX = maxXValue;
+                                    MaxY = maxYValue;
+                                    bFirst = false;
+                                }
+
+                                if (MinX > minXValue)
+                                    MinX = minXValue;
+
+                                if (MinY > minYValue)
+                                    MinY = minYValue;
+
+                                if (MaxX < maxXValue)
+                                    MaxX = maxXValue;
+
+                                if (MaxY < maxYValue)
+                                    MaxY = maxYValue;
+                            }
+                        }
+                    }
+
+                    objAllDrawingData.X = new DrawingPointMinMax
+                    {
+                        Minimum = MinX,
+                        Maximum = MaxX
+                    };
+
+                    objAllDrawingData.Y = new DrawingPointMinMax
+                    {
+                        Minimum = MinY,
+                        Maximum = MaxY
+                    };
+
+                    objAllDrawingData.DrawingData = lstDrawingData;
+
+                    try
+                    {
+                        SVGFileProcessor objSvgProcessor = new SVGFileProcessor();
+                        string sSVGData = objSvgProcessor.createSVG(GetErrorHtmlDrawingTemplateData, objAllDrawingData);
+
+                        Match mt = regexExtractBodyContent.Match(sSVGData);
+                        if (mt.Success && mt.Groups.Count == 3)
+                        {
+                            sSVGData = mt.Groups[2].Value;
+                        }
+
+                        Console.WriteLine($"HTML File created at {sDrawingDataHtmlFile}");
+                        File.WriteAllText(sDrawingDataHtmlFile, sSVGData);
+
+                    }
+                    catch (Exception exDrawing)
+                    {
+                        Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Exception drawing: " + exDrawing.Message);
+                        Console.WriteLine(exDrawing.StackTrace);
+                    }
+
+                    File.WriteAllText(sDrawingDataJsonFile, JsonConvert.SerializeObject(objAllDrawingData, Formatting.Indented));
+                }
+                    //***************************
+
+                
                 File.WriteAllText(sDataJsonFile, JsonConvert.SerializeObject(lstResultWithText, Formatting.Indented));
                 File.WriteAllText(sRuleInputJsonFile, JsonConvert.SerializeObject(dxfProcessorInput, Formatting.Indented));
                 File.WriteAllText(sTimingFile, string.Join("\r\n", logTiming));
-                string sx = "test";
-
-
-
-                /*
-
-                                List<Cordinates> lstUnitCords = listDistanceWithPoints.OrderBy(x => x.Distance).Select(x=>x.StartPoint).Take(2).ToList();
-                                List<CLineSegment> lineMainRoad = MakeConnectedLines(lstOnLineCoordinate);
-
-                                // Find distance from minimum
-                                if( nearestUnit  != null)
-                                {
-                                    nearestUnit.Lines = MakeClosePolyLines(nearestUnit.Coordinates);
-                                    List<CLineSegment> lines = nearestUnit.Lines;
-                                    double? distance = null;
-                                    foreach (Cordinates cord in lstOnLineCoordinate)
-                                    { 
-                                        List<double> lstDistance = FindAllDistanceBetweenPolygonAndPointUsingCoordinateAndLines(nearestUnit, cord);
-                                        if (lstDistance != null)
-                                            Console.WriteLine($"1 Distance: " + lstDistance.Max());
-                                    }
-                                }
-                */
-
-                #region comment
-
-                //foreach (LayerDataWithText unitItem in lstUnit)
-                //{
-                //    unitItem.Lines = MakeClosePolyLines(unitItem.Coordinates);
-                //    List<CLineSegment> lines = unitItem.Lines;
-                //    double? distance = null;
-                //    CLineSegment line = new CLineSegment();
-                //    FindMinimumDistanceCenterLineToPolygonLineSegmentMidPoint(lstOnLineCoordinate, lines, ref distance, ref line);
-                //    if(distance != null)
-                //        Console.WriteLine($"1 Distance: " + distance);
-                //}
-
-
-
-                ////Find Unit which closed to main road line
-                //if (lstResultWithText.Exists(x => x.LayerName.Equals(DxfLayersName.RearMargin)))
-                //{
-                //    LayerDataWithText rearLine = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.RearMargin)).First();
-                //    rearLine.Lines = MakeConnectedLines(rearLine.Coordinates);
-                //    Console.WriteLine("Rear middle : " + rearLine.Lines.First().MidPoint.ToString());
-
-                //    foreach (LayerDataWithText unitItem in lstUnit)
-                //    {
-                //        Console.WriteLine("Distance: " + ExtractLayerText(unitItem, false, "") + " =>" + FindAllDistanceBetweenPolygonAndPointUsingCoordinateAndLines(unitItem, rearLine.Lines.First().MidPoint).Min().ToString());
-                //    }
-
-                //}
-
-                ////Find Unit which closed opposite to main road line
-
-                //foreach (LayerDataWithText unitItem in lstSiteplanUnit)
-                //{
-                //    foreach (LayerDataWithText lotItem in lstLot)
-                //    {
-                //        List<double> distance = FindAllDistanceBetweenTwoPolygonUsingCoordinateAndLines(unitItem, lotItem);
-                //        Console.WriteLine($"{ExtractLayerText(unitItem, false, "")} and {ExtractLayerText(lotItem, false,"")} minimum={distance.Min()} , maximum={distance.Max()} " );
-                //    }
-                //}
-                #endregion
 
                 sbHeaderProcessTask.AppendLine("");
                 sbHeaderProcessTask.AppendLine("-----------------------------------------------------------");
                 sbHeaderProcessTask.AppendLine("Total Process Task End time " + DateTime.Now.ToString("HH:mm:ss.fffff") + ", Sec: " + DateTime.Now.Subtract(dtTaskStart).TotalSeconds + ", MS: " + DateTime.Now.Subtract(dtTaskStart).TotalMilliseconds);
                 sbHeaderProcessTask.AppendLine("-----------------------------------------------------------");
                 sbHeaderProcessTask.AppendLine("");
-                sbHeaderProcessTask.AppendLine("");
-
 
                 Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Report generated successfully.");
                 Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : ");
@@ -466,49 +1101,69 @@ namespace EdmontonDrawingValidator
                         File.Delete(DXFFilePathToProcess);
                 }
 
-                //Now write rule tester
-                RuleTesterCommand ruleCommand = new RuleTesterCommand();
-                ruleCommand.SubPlotUse = new List<SubPlotUseDetail>();
-                ruleCommand.ObjProject= new Project();
-                ruleCommand.RuleJsonFilePath = sRuleInputJsonFile;
+                Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Update data status project id " + objDXFFileQueueItem.ObjProject.ProjectId);
 
-
-                var objRuleTester = new
+                if (lstDrawingAllValidateResult.Any(x => x.IsValid == false) == false)
                 {
-                    RuleJsonFilePath = sRuleInputJsonFile,
-                    ObjProject = new object(),   // empty object
-                    SubPlotUse = new object[] { }
-                };
-
-                var options = new JsonSerializerOptions
-                {
-                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
-                    WriteIndented = true
-                };
-
-
-                string json = System.Text.Json.JsonSerializer.Serialize(objRuleTester, options);
-
-                int iTry = 0;
-                bool bDone = false;
-                while (iTry < 15)
-                {
-                    if (File.Exists(sRuleInputJsonFile))
+                    try
                     {
-                        //Console.WriteLine(json);
-                        File.WriteAllText(sRuleTesterInputJsonFile, json);
-                        bDone = true;
-                        break;
+                        HttpOperation httpOperation = new HttpOperation();
+                        string sUrl = General.RulesCheckingStatusUpdateURL;
+                        sUrl = sUrl.Replace("{RULE_TESTER_BASE_API_URL}", General.RuleTesterBaseAPIUrl);
+                        sUrl = sUrl.Replace("{PROJECT_ID}", "" + objDXFFileQueueItem.ObjProject.ProjectId);
+                        if (lstDrawingAllValidateResult.Any(x => x.IsValid == false) == false)
+                            sUrl = sUrl.Replace("{STATUS}", Uri.EscapeDataString(ProjectStatus.PreparingScrutinyData));
+                        else
+                            sUrl = sUrl.Replace("{STATUS}", ProjectStatus.NonCompliantDrawing);
+
+                        Console.WriteLine(sUrl);
+                        string sResponse = await httpOperation.GetUpdateRuleCheckingStatusAsync(sUrl);
                     }
-                    iTry++;
-                    await Task.Delay(1000);
+                    catch { }
+
+
+                    //Now write rule tester
+                    DxfProcessorQueue dataCommand = new DxfProcessorQueue();
+                    dataCommand.ObjProject = new Project();
+                    dataCommand.DxfFilePath = objDXFFileQueueItem.DxfFilePath;
+                    dataCommand.ObjProject = objDXFFileQueueItem.ObjProject;
+
+                    //var objRuleTester = new
+                    //{
+                    //    RuleJsonFilePath = sRuleInputJsonFile,
+                    //    ObjProject = new object(),
+                    //    SubPlotUse = new object[] { }
+                    //};
+
+                    var options = new JsonSerializerOptions
+                    {
+                        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
+                        WriteIndented = true
+                    };
+
+                    string json = System.Text.Json.JsonSerializer.Serialize(dataCommand, options);
+
+                    File.WriteAllText(sDataProcessFile, json);
                 }
+                else
+                {
+                    try
+                    {
+                        HttpOperation httpOperation = new HttpOperation();
+                        string sUrl = General.RulesCheckingStatusUpdateURL;
+                        sUrl = sUrl.Replace("{RULE_TESTER_BASE_API_URL}", General.RuleTesterBaseAPIUrl);
+                        sUrl = sUrl.Replace("{PROJECT_ID}", "" + objDXFFileQueueItem.ObjProject.ProjectId);
+                        if (lstDrawingAllValidateResult.Any(x => x.IsValid == false) == false)
+                            sUrl = sUrl.Replace("{STATUS}", Uri.EscapeDataString(ProjectStatus.NonCompliantDrawing));
+                        else
+                            sUrl = sUrl.Replace("{STATUS}", ProjectStatus.NonCompliantDrawing);
 
-                // forcefully done...
-                if(!bDone)
-                    File.WriteAllText(sRuleTesterInputJsonFile, json);
+                        Console.WriteLine(sUrl);
+                        string sResponse = await httpOperation.GetUpdateRuleCheckingStatusAsync(sUrl);
+                    }
+                    catch { }
 
-
+                }
             }
             catch (Exception ex)
             {
@@ -519,7 +1174,57 @@ namespace EdmontonDrawingValidator
             return 1;
         }
 
-        public void GetSetBack(List<LayerInfo> lstSiteplanInfo, List<LayerDataWithText> lstSiteplanRearMarginLine, ref SetBackInformation objSetBackData,ref LotInformation objLotInformation, ref FlankingInformation objFlankingInformation)
+
+        private void ValidateMissingText(List<LayerDataWithText> allLayerData, DrawingValidateItem objResult)
+        {
+            objResult = new DrawingValidateItem();
+            objResult.Name = RuleName.BuildingNameTextValidation;
+            objResult.RuleOn = "Building name validation";
+            objResult.RuleType = RuleType.Element;
+
+            List<string> lstLayer = new List<string> { DxfLayersName.Unit };
+            List<LayerDataWithText> lstElements = allLayerData.Where(x => lstLayer.Contains(x.LayerName)).ToList();
+            if (lstElements != null && lstElements.Count > 0)
+            {
+                foreach (LayerDataWithText building in lstElements)
+                {
+                    string sText = ExtractLayerText(building, false, "");
+                    if (string.IsNullOrWhiteSpace(sText))
+                    {
+                        objResult.IsValid = false;
+                        objResult.ErrorElements.Add(new ItemErrorDetails { ErrorMessage = "Missing text", ElementPositionCoordinate = building.Coordinates });
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validates all DXF elements by type
+        /// </summary>
+        private ValidationResult ValidateAllElements(List<LayerDataWithText> lstResultWithText)
+        {
+            if (lstResultWithText == null || lstResultWithText.Count == 0)
+            {
+                return new ValidationResult { IsValid = true };
+            }
+
+            try
+            {
+                // Prepare a default validatorsByType dictionary if none is available
+                Dictionary<string, ElementValidator> validatorsByType = new Dictionary<string, ElementValidator>();
+                // Optionally, populate validatorsByType here if you have custom validators for each type
+
+                var result = _validator.ValidateElementsByType(lstResultWithText, validatorsByType);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                log.Error($"Error during element validation: {ex.Message}", ex);
+                return new ValidationResult { IsValid = false };
+            }
+        }
+
+        public void GetSetBack(List<LayerInfo> lstSiteplanInfo, List<LayerDataWithText> lstSiteplanRearMarginLine, ref SetBackInformation objSetBackData, ref LotInformation objLotInformation, ref FlankingInformation objFlankingInformation)
         {
             objSetBackData = new SetBackInformation();
 
@@ -814,7 +1519,7 @@ namespace EdmontonDrawingValidator
 
                 totalLotArea = FindAreaByCoordinates(lot.Data);
 
-                if(lotWidth == width)
+                if (lotWidth == width)
                     objLotInformation = new LotInformation { Name = ExtractLayerText(lot.Data, false, ""), Width = FormatFigureInDecimalPoint(width), Depth = FormatFigureInDecimalPoint(depth), Area = FormatFigureInDecimalPoint(totalLotArea) };
                 else
                     objLotInformation = new LotInformation { Name = ExtractLayerText(lot.Data, false, ""), Width = FormatFigureInDecimalPoint(depth), Depth = FormatFigureInDecimalPoint(width), Area = FormatFigureInDecimalPoint(totalLotArea) };
@@ -848,7 +1553,7 @@ namespace EdmontonDrawingValidator
                 });
             }
         }
-        public void GetGarageInformation(List<LayerInfo> lstSiteplanInfo, ref GarageInformation objGarageInformation,ref bool IsGarageExists)
+        public void GetGarageInformation(List<LayerInfo> lstSiteplanInfo, ref GarageInformation objGarageInformation, ref bool IsGarageExists)
         {
             List<LayerInfo> lstSiteplanUnit = new List<LayerInfo>();
             List<LayerInfo> lstSiteplanGarage = new List<LayerInfo>();
@@ -870,7 +1575,7 @@ namespace EdmontonDrawingValidator
                     double? distance = FindMinimumDistanceBetweenTwoPolygonUsingCoordinateAndLines(unit.Data, garage.Data);
                     if (distance != null)
                     {
-                        if(distance.Value < minDistance || minDistance == double.MaxValue)
+                        if (distance.Value < minDistance || minDistance == double.MaxValue)
                         {
                             minDistance = distance.Value;
                             garageArea = FindAreaByCoordinates(garage.Data.Coordinates);
@@ -878,7 +1583,7 @@ namespace EdmontonDrawingValidator
                     }
                 }
 
-                if(minDistance != double.MaxValue)
+                if (minDistance != double.MaxValue)
                 {
                     objGarageInformation.GarageDistanceWithUnit.Add(new SingleUnitWithGarage
                     {
@@ -888,73 +1593,30 @@ namespace EdmontonDrawingValidator
                     });
                     Console.WriteLine($"Garage distance from unit name: {unitName}, Distance: " + minDistance);
                 }
-                
+
             }
         }
-        public void GetWallFromElevationInformation(List<LayerInfo> lstFourElevationplanForWallDoorInfo, ref UnitWallDoorWindowInformation objGarageInformation)
+        public void GetWallFromElevationInformation(List<LayerInfo> lstFourElevationplanForWallDoorInfo, ref DrawingValidateItem objElevationValidation)
         {
+            objElevationValidation = new DrawingValidateItem();
+
             foreach (LayerInfo elevation in lstFourElevationplanForWallDoorInfo)
             {
-                string elevationName = ExtractLayerText(elevation.Data, false,"");
-                if (elevation.Child.ContainsKey(DxfLayersName.Wall))
+                string elevationName = ExtractLayerText(elevation.Data, false, "");
+                if (elevation.Child.ContainsKey(DxfLayersName.Wall) == false)
                 {
-                    List<LayerInfo> lstWall = elevation.Child[DxfLayersName.Wall];
-                    if (elevation.Child.ContainsKey(DxfLayersName.Window))
+                    objElevationValidation.IsValid = false;
+                    objElevationValidation.ErrorElements.Add(new ItemErrorDetails
                     {
-                        List<LayerInfo> lstWindow = elevation.Child[DxfLayersName.Window];
-                        objLayerExtractor.ExtractChildLayersForParentLayer(lstWindow.Select(x => x.Data).ToList(), DxfLayersName.Window, DxfLayersName.Window, ref lstWall);
-
-                    }
-
-                    if (elevation.Child.ContainsKey(DxfLayersName.Door))
-                    {
-                        List<LayerInfo> lstDoor = elevation.Child[DxfLayersName.Door];
-                        objLayerExtractor.ExtractChildLayersForParentLayer(lstDoor.Select(x => x.Data).ToList(), DxfLayersName.Door, DxfLayersName.Door, ref lstWall);
-                    }
-                     
-                    // find area of all widnow and all
-                    foreach (LayerInfo wall in lstWall)
-                    {
-                        string wallName = ExtractLayerText(wall.Data, false, "");
-                        double wallArea = FindAreaByCoordinates(wall.Data);
-
-                        List<double> lstDoorArea = new List<double>();
-                        List<double> lstWindowArea = new List<double>();
-
-                        if (wall.Child.ContainsKey(DxfLayersName.Door))
-                        {
-                            foreach(LayerInfo door in wall.Child[DxfLayersName.Door])
-                            {
-                                //string doorName = ExtractLayerText(door, false, "");
-                                lstDoorArea.Add( FindAreaByCoordinates(door.Data));
-                            }
-                        }
-                        if (wall.Child.ContainsKey(DxfLayersName.Window))
-                        {
-                            foreach (LayerInfo window in wall.Child[DxfLayersName.Window])
-                            {
-                                //string windowName = ExtractLayerText(window, false, "");
-                                lstWindowArea.Add(FindAreaByCoordinates(window.Data));
-                            }
-                        }
-
-
-                        objGarageInformation.UnitsWall.Add(new SingleUnitWallDoorWindowInformation
-                        {
-                            LayerName = elevation.Data.LayerName,
-                            ElevationName = elevationName,
-                            Name = wallName,
-                            WallArea = wallArea,
-                            Door = lstDoorArea.Sum(),
-                            Window = lstWindowArea.Sum()
-                        });
-                    }
+                        ErrorMessage = $"Wall is missing in {elevationName}",
+                        ElementPositionCoordinate = elevation.Data.Coordinates
+                    });
                 }
             }
         }
 
 
-        public void GetFlankingInformation(List<LayerInfo> lstSiteplanInfo,ref CLineSegment objSide1Line, ref CLineSegment objSide2Line, ref FlankingInformation objFlankingInformation)
+        public void GetFlankingInformation(List<LayerInfo> lstSiteplanInfo, ref CLineSegment objSide1Line, ref CLineSegment objSide2Line, ref FlankingInformation objFlankingInformation)
         {
             List<LayerInfo> lstSiteplanUnit = new List<LayerInfo>();
             List<LayerInfo> lstSiteplanOtherRoad = new List<LayerInfo>();
@@ -962,7 +1624,7 @@ namespace EdmontonDrawingValidator
             List<LayerInfo> lstSiteplanRearMarginLine = new List<LayerInfo>();
 
             List<CLineSegment> lstSiteLines = new List<CLineSegment>();
-            if(objSide1Line != null)
+            if (objSide1Line != null)
                 lstSiteLines.Add(objSide1Line);
             if (objSide2Line != null)
                 lstSiteLines.Add(objSide2Line);
@@ -981,7 +1643,7 @@ namespace EdmontonDrawingValidator
 
             //Check the other road is landning on side not rear or front side
             bool isValidOtherRoad = true;
-            if(lstSiteplanRearMarginLine == null || lstSiteplanRearMarginLine.Count() == 0)
+            if (lstSiteplanRearMarginLine == null || lstSiteplanRearMarginLine.Count() == 0)
                 isValidOtherRoad = false;
 
             foreach (LayerInfo otherRoad in lstSiteplanOtherRoad)
@@ -990,16 +1652,16 @@ namespace EdmontonDrawingValidator
                 foreach (LayerInfo rearLine in lstSiteplanRearMarginLine)
                 {
                     int cnt = 0;
-                    foreach(Cordinates cord in  rearLine.Data.Coordinates)
+                    foreach (Cordinates cord in rearLine.Data.Coordinates)
                     {
-                        foreach(CLineSegment line in otherRoad.Data.Lines)
+                        foreach (CLineSegment line in otherRoad.Data.Lines)
                         {
                             if (line.IsPointOnLine(cord, ErrorAllowScale))
                                 cnt++;
                         }
                     }
 
-                    if(cnt > 1)
+                    if (cnt > 1)
                         isValidOtherRoad = false;
                 }
 
@@ -1052,7 +1714,7 @@ namespace EdmontonDrawingValidator
                     if (minDistance != double.MaxValue)
                     {
                         objFlankingInformation.FlankingRoad.Add(new SingleFlankingRoad
-                        { 
+                        {
                             UnitName = unitName,
                             RoadName = RoadName,
                             Distance = FormatFigureInDecimalPoint(minDistance)
@@ -1061,7 +1723,7 @@ namespace EdmontonDrawingValidator
                     }
                 }
             }
-            
+
 
         }
 
@@ -1125,128 +1787,75 @@ namespace EdmontonDrawingValidator
             }
         }
 
-        public void GetSectionalData(List<LayerDataWithText> lstResultWithText, ref SectionPlanData objSelectionPlanData)
+        public void SectionalDataValidation(List<LayerDataWithText> lstResultWithText, ref DrawingValidateItem objSelectionPlanValidation)
         {
 
-            objSelectionPlanData = new SectionPlanData();
+            objSelectionPlanValidation = new DrawingValidateItem();
+
             List<LayerDataWithText> lstSectionPlan = lstResultWithText.Where(x => x.LayerName.Equals(DxfLayersName.SectionPlan, StringComparison.OrdinalIgnoreCase)).ToList();
-            List<LayerInfo> lstSectionplanInfo = objLayerExtractor.SetLayerInfo(lstSectionPlan, DxfLayersName.SectionPlan);
-            List<LayerInfo> lstUnitInfo = new List<LayerInfo>();// lstResultWithText.Where(x => x.LayerName.ToLower() == DxfLayersName.Unit).ToList();
 
-            objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.GradeLine, DxfLayersName.GradeLine, ref lstSectionplanInfo);
-            objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.FloorJoist, DxfLayersName.FloorJoist, ref lstSectionplanInfo);
-            objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.TopOfWallPlate, DxfLayersName.TopOfWallPlate, ref lstSectionplanInfo);
-            objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.RoofLine, DxfLayersName.RoofLine, ref lstSectionplanInfo);
-            objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.FloorLine, DxfLayersName.FloorLine, ref lstSectionplanInfo);
-
-            foreach (LayerInfo section in lstSectionplanInfo)
+            if (lstSectionPlan == null || lstSectionPlan.Count == 0)
             {
-                if (section.Child.Keys.Contains(DxfLayersName.FloorJoist, StringComparer.OrdinalIgnoreCase) &&
-                    section.Child.Keys.Contains(DxfLayersName.TopOfWallPlate, StringComparer.OrdinalIgnoreCase) &&
-                    //section.Child.Keys.Contains(DxfLayersName.FloorLine, StringComparer.OrdinalIgnoreCase) &&
-                    section.Child.Keys.Contains(DxfLayersName.RoofLine, StringComparer.OrdinalIgnoreCase) &&
-                    section.Child.Keys.Contains(DxfLayersName.GradeLine, StringComparer.OrdinalIgnoreCase))
+                objSelectionPlanValidation.IsValid = false;
+                objSelectionPlanValidation.ErrorElements.Add(new ItemErrorDetails
                 {
-                    List<LayerInfo> lstFloorJoist = section.Child[DxfLayersName.FloorJoist];
-                    List<LayerInfo> lstTopWallPlate = section.Child[DxfLayersName.TopOfWallPlate];
-                    List<LayerInfo> lstRoofLine = section.Child[DxfLayersName.RoofLine];
-                    List<LayerInfo> lstGradLine = section.Child[DxfLayersName.GradeLine];
-                    List<LayerInfo> lstFloorLine = null;
-                    List<LayerInfo> lstGarage = null;
+                    ErrorMessage = "Section plan is missing"
+                });
+            }
+            else
+            {
+                List<LayerInfo> lstSectionplanInfo = objLayerExtractor.SetLayerInfo(lstSectionPlan, DxfLayersName.SectionPlan);
 
-                    if (section.Child.Keys.Contains(DxfLayersName.Garage, StringComparer.OrdinalIgnoreCase))
-                        lstGarage = section.Child[DxfLayersName.Garage];
+                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.GradeLine, DxfLayersName.GradeLine, ref lstSectionplanInfo);
+                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.FloorJoist, DxfLayersName.FloorJoist, ref lstSectionplanInfo);
+                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.TopOfWallPlate, DxfLayersName.TopOfWallPlate, ref lstSectionplanInfo);
+                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.RoofLine, DxfLayersName.RoofLine, ref lstSectionplanInfo);
+                objLayerExtractor.ExtractChildLayersForParentLayer(lstResultWithText, DxfLayersName.FloorLine, DxfLayersName.FloorLine, ref lstSectionplanInfo);
 
-                    if (section.Child.Keys.Contains(DxfLayersName.FloorLine, StringComparer.OrdinalIgnoreCase))
-                        lstFloorLine = section.Child[DxfLayersName.FloorLine];
-
-                    lstFloorJoist = lstFloorJoist.OrderBy(x => x.Data.Coordinates.Min(x => x.Y)).ToList();
-
-                    int i = 1;
-                    for (; i < lstFloorJoist.Count(); i++)
+                foreach (LayerInfo section in lstSectionplanInfo)
+                {
+                    if (section.Child.Any(x => x.Key == DxfLayersName.GradeLine) == false)
                     {
-                        objSelectionPlanData.Height.Add(new SectionPlanFloorData
+                        objSelectionPlanValidation.IsValid = false;
+                        objSelectionPlanValidation.ErrorElements.Add(new ItemErrorDetails
                         {
-                            FloorIndex = i,
-                            Height = FormatFigureInDecimalPoint(Math.Abs(lstFloorJoist[i - 1].Data.Coordinates.Max(x => x.Y) - lstFloorJoist[i].Data.Coordinates.Max(x => x.Y)))
+                            ErrorMessage = "Grad line is missing in section plan",
                         });
                     }
-
-                    if (section.Child.Keys.Contains(DxfLayersName.TopOfWallPlate, StringComparer.OrdinalIgnoreCase))
+                    if (section.Child.Any(x => x.Key == DxfLayersName.FloorJoist) == false)
                     {
-                        objSelectionPlanData.Height.Add(new SectionPlanFloorData
+                        objSelectionPlanValidation.IsValid = false;
+                        objSelectionPlanValidation.ErrorElements.Add(new ItemErrorDetails
                         {
-                            FloorIndex = i,
-                            Height = FormatFigureInDecimalPoint(Math.Abs(lstFloorJoist[lstFloorJoist.Count() - 1].Data.Coordinates.Max(x => x.Y) - lstTopWallPlate[0].Data.Coordinates.Max(x => x.Y)))
+                            ErrorMessage = "Floor joist is missing in section plan",
                         });
-
                     }
-
-                    // Garage distance from main unit
-                    if (lstUnitInfo.Count() == 1 && lstGarage.Count() == 1)
+                    if (section.Child.Any(x => x.Key == DxfLayersName.TopOfWallPlate) == false)
                     {
-                        List<double> lsDistances = FindAllDistanceBetweenTwoPolygonUsingCoordinateAndLines(lstUnitInfo[0].Data, lstGarage[0].Data);
-                        Console.WriteLine("Garage to Unit distance : " + lsDistances.Min());
-                    }
-
-                    //roof height building height
-                    if (section.Child.Keys.Contains(DxfLayersName.RoofLine, StringComparer.OrdinalIgnoreCase))
-                    {
-                        foreach (LayerInfo roofLine in section.Child[DxfLayersName.RoofLine].ToList())
+                        objSelectionPlanValidation.IsValid = false;
+                        objSelectionPlanValidation.ErrorElements.Add(new ItemErrorDetails
                         {
-                            double topCordinates = roofLine.Data.Coordinates.Max(x => x.Y);
-                            List<CLineSegment> topLine = roofLine.Data.Lines;
-
-                            List<CLineSegment> topLines = roofLine.Data.Lines;
-                            Polygon inputPolygon = NetTopologySuiteUtility.BuildPolygon(topLines);
-
-                            Polygon simplified = NetTopologySuiteUtility.SimplifyToQuadrilateral(inputPolygon);
-                            // Print simplified quadrilateral
-                            foreach (var coord in simplified.Coordinates)
-                            {
-                                Console.WriteLine($"Simplified: {coord.X}, {coord.Y}");
-                            }
-
-
-                            topLine = NetTopologySuiteUtility.ToCustomSegments(simplified);
-
-
-                            //SimplifyToQuadrilateral
-                            //topLine = objLineOperation.SmoodhPolyLineSegments(topLine, ref TempBufferString);
-                            topLine = topLine.Where(x => x.MaxY == topCordinates).ToList();
-                            if (topLine.Count() > 0)
-                            {
-                                if (lstFloorJoist.Count() > 0)
-                                {
-                                    double roofDistance = topLine[0].MidPoint.Y - lstFloorJoist[0].Data.Coordinates.Max(y => y.Y);
-                                    //objSelectionPlanData.Roof.Add(new SectionPlanFloorData
-                                    //{
-                                    //    FloorIndex = 0,
-                                    //    Height = FormatFigureInDecimalPoint(roofDistance)
-                                    //});
-
-                                    objSelectionPlanData.TotalHeight = FormatFigureInDecimalPoint(roofDistance);
-                                }
-                                else
-                                {
-                                    double roofDistance = topLine[0].MidPoint.Y - lstTopWallPlate[0].Data.Coordinates.Max(y => y.Y);
-                                    //objSelectionPlanData.Roof.Add(new SectionPlanFloorData
-                                    //{
-                                    //    FloorIndex = 0,
-                                    //    Height = FormatFigureInDecimalPoint(roofDistance)
-                                    //});
-                                    objSelectionPlanData.TotalHeight = FormatFigureInDecimalPoint(roofDistance);
-                                }
-                            }
-
-                            //Total height
-                            //double totalHeight = roofLine.Data.Coordinates.Max(x => x.Y) - lstGradLine[0].Data.Coordinates.Max(x => x.Y);
-                            //objSelectionPlanData.TotalHeight = FormatFigureInDecimalPoint(totalHeight);
-                        }
+                            ErrorMessage = "Top of wall plate is missing in section plan",
+                        });
+                    }
+                    if (section.Child.Any(x => x.Key == DxfLayersName.RoofLine) == false)
+                    {
+                        objSelectionPlanValidation.IsValid = false;
+                        objSelectionPlanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Roof line is missing in section plan",
+                        });
+                    }
+                    if (section.Child.Any(x => x.Key == DxfLayersName.FloorLine) == false)
+                    {
+                        objSelectionPlanValidation.IsValid = false;
+                        objSelectionPlanValidation.ErrorElements.Add(new ItemErrorDetails
+                        {
+                            ErrorMessage = "Floor line is missing in section plan",
+                        });
                     }
                 }
             }
-
         }
 
         // Length of a side between two points
@@ -1263,7 +1872,7 @@ namespace EdmontonDrawingValidator
             return numerator / denominator;
         }
         public DimensionBlock PrepareBoundary(List<LayerDataWithText> lstInputData, bool IsMakeClose, ref DimensionBlock plotDimension)
-        { 
+        {
             List<LayerDataWithText> lstPrintArea = lstInputData.Where(x => x.LayerName.ToLower().Trim() == DxfLayersName.PrintArea).ToList();
             string temp = "";
             foreach (LayerDataWithText item in lstInputData)
@@ -1297,7 +1906,7 @@ namespace EdmontonDrawingValidator
                     }
                 }
             }
-             
+
             return plotDimension;
         }
         public void ProcessBulgeData(LayerDataWithText item, bool IsMakeClose, ref DimensionBlock plotDimension)
@@ -1450,7 +2059,7 @@ namespace EdmontonDrawingValidator
         {
             File.AppendAllText(sFile, content + Environment.NewLine);
         }
-         public void FormatReportData(string sFile)
+        public void FormatReportData(string sFile)
         {
             if (!File.Exists(sFile))
                 return;
@@ -1475,7 +2084,7 @@ namespace EdmontonDrawingValidator
 
             File.WriteAllText(sFile, header + "\r\n\r\n" + sData);
         }
-    
+
         //Following move to layer extractor
         public void ProcessPolygonMergeLineCoordinates(ref List<LayerDataWithText> lstInput)
         {
@@ -1612,63 +2221,16 @@ namespace EdmontonDrawingValidator
             lstInput = lstInput.Where(x => x.Coordinates != null).ToList();
         }
 
-        //Added on 12Jan2024 
-        public void ProcessToCommonPlotName(ref List<LayerDataWithText> lstInput)
-        {
-            if (lstInput == null || lstInput.Count == 0)
-                return;
-
-            int iTotalLayer = lstInput.Count;
-            int icnt = 1;
-            for (int iCnt = 0; iCnt < iTotalLayer; iCnt++)
-            {
-                if (lstInput[iCnt].LayerName.ToLower().Trim() != DxfLayersName.CommonPlot.ToLower().Trim() || CheckLineTypeIsCenterLine(lstInput[iCnt].LineType) || lstInput[iCnt].Coordinates == null || lstInput[iCnt].Coordinates.Count <= 2)
-                    continue;
-
-                string sText = ExtractLayerText(lstInput[iCnt], false, "");
-                if (string.IsNullOrWhiteSpace(sText))
-                {
-                    if (lstInput[iCnt].TextInfoData == null || lstInput[iCnt].TextInfoData.Count() == 0)
-                    {
-                        lstInput[iCnt].TextInfoData = new List<LayerTextInfo>();
-                        LayerTextInfo itemText = new LayerTextInfo();
-                        itemText.Text = string.Format(CommonPlotText, icnt);
-                        itemText.Coordinates = new List<Cordinates>();
-                        itemText.Coordinates.Add(lstInput[iCnt].Coordinates.First());
-
-                        lstInput[iCnt].TextInfoData.Add(itemText);
-                    }
-                    else
-                    {
-                        if (lstInput[iCnt].TextInfoData[0] == null || string.IsNullOrEmpty(lstInput[iCnt].TextInfoData[0].Text))
-                        {
-                            lstInput[iCnt].TextInfoData = new List<LayerTextInfo>();
-                            LayerTextInfo itemText = new LayerTextInfo();
-                            itemText.Text = string.Format(CommonPlotText, icnt);
-                            itemText.Coordinates = new List<Cordinates>();
-                            itemText.Coordinates.Add(lstInput[iCnt].Coordinates.First());
-
-                            lstInput[iCnt].TextInfoData.Add(itemText);
-                        }
-                    }
-                    icnt++;
-
-                }
-            }
-        }
-
-
-        //Added on 29Nov022
         public void ProcessToClosePolygon(ref List<LayerDataWithText> lstInput)
         {
             if (lstInput == null || lstInput.Count == 0)
                 return;
 
-            string[] arrIgnoreLayers = new string[] { DxfLayersName.MarginLine, DxfLayersName.GroundLevel, DxfLayersName.HighFloodLevel };
+            //string[] arrIgnoreLayers = new string[] { DxfLayersName.MarginLine, DxfLayersName.GroundLevel, DxfLayersName.HighFloodLevel };
             int iTotalLayer = lstInput.Count;
             for (int iCnt = 0; iCnt < iTotalLayer; iCnt++)
             {
-                if (arrIgnoreLayers.Contains(lstInput[iCnt].LayerName.ToLower().Trim()) || lstInput[iCnt].IsCircle ||
+                if (General.GetLayerNameNoClosePolyline().Contains(lstInput[iCnt].LayerName.ToLower().Trim()) || lstInput[iCnt].IsCircle ||
                     CheckLineTypeIsCenterLine(lstInput[iCnt].LineType) || lstInput[iCnt].Command.ToLower().Trim() != DxfLayersName.PolyLine || lstInput[iCnt].Coordinates == null || lstInput[iCnt].Coordinates.Count <= 3)
                     continue;
 
@@ -1685,7 +2247,7 @@ namespace EdmontonDrawingValidator
         {
             if (lstInput == null || lstInput.Count == 0)
                 return;
-             
+
             for (int iCnt = 0; iCnt < lstInput.Count; iCnt++)
             {
                 if (lstInput[iCnt].HasBulge)
@@ -1697,9 +2259,9 @@ namespace EdmontonDrawingValidator
                 }
                 else
                 {
-                    lstInput[iCnt].Lines =  MakeClosePolyLines(lstInput[iCnt].Coordinates);
+                    lstInput[iCnt].Lines = MakeClosePolyLines(lstInput[iCnt].Coordinates);
                 }
-            } 
+            }
         }
 
         //added on 05May2022 
@@ -1712,7 +2274,7 @@ namespace EdmontonDrawingValidator
             for (int iCnt = 0; iCnt < iTotalLayer; iCnt++)
             {
                 try
-                {     
+                {
                     LayerDataWithText dataForArea = lstInput[iCnt].DeepClone();
                     if (lstInput[iCnt].Coordinates.Count > 3 && lstInput[iCnt].Command.ToLower().Trim() == DxfLayersName.PolyLine && FindAreaByCoordinates(dataForArea) == 0)
                     {
@@ -1901,7 +2463,6 @@ namespace EdmontonDrawingValidator
 
             return lstCircleToLines;
         }
-
-    } // class
+    }
 
 } // namespace

@@ -2,16 +2,16 @@
 {
   "INPUT_DATA": {
     "INSTANCE_NAME": "Admenta",
-    "INPUT_FOLDER": "C:\\Work\\Canada\\Data\\input\\",
-    "RULE_TESTER_INPUT_FOLDER": "C:\\Work\\Canada\\Data\\input\\Rule\\",
+    "INPUT_FOLDER": "C:\\Work\\Canada\\Data\\input\\DwgValidate\\",
+    "DRAWING_DATA_PROCESSOR_INPUT_FOLDER": "C:\\Work\\Canada\\Data\\input\\",
     "INPUT_FILE_EXTESION": "*.json",
     "NUMBER_OF_THREADS": "10",
     "SLEEP_TIME_IN_MS": "10000",
-    "RULE_TESTER_BASE_API_URL": "http://localhost:5112",
-    "RULES_CHECKING_STATUS_UPDATE_URL": "{RULE_TESTER_BASE_API_URL}/ConsoleHelper/CheckRulesAndUpdateStatus/{PROJECT_ID}",
+    "RULE_TESTER_BASE_API_URL": "http://edmonton.svpass.in",
+    "RULES_CHECKING_STATUS_UPDATE_URL": "{RULE_TESTER_BASE_API_URL}/ConsoleHelper/GetLatestProjectStatus?id={PROJECT_ID}&status={STATUS}",
     "ADD_BUILDING_URL": "{RULE_TESTER_BASE_API_URL}/ConsoleHelper/AddBuildingNamesWithBuiltupInDb",
     "CREATE_DRAWING_DATA_FILE_YES_NO": "yes",
-    "TEMPLATE_HTML": "C:\\work\\BKPatel\\E-PAS-DXF-Processor\\data\\template.html",
+    "TEMPLATE_HTML": "C:\\Work\\Canada\\template.html",
     "SVG_SCALE_VALUE": "100",
     "GEOMETRI_PRECISION": "10000"
   } 

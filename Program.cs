@@ -52,60 +52,8 @@ namespace EdmontonDrawingValidator
             return false;
         }
 
-        public static void createInputJson()
-        {
-            for (int i = 1; i <= 80; i++)
-            {
-                //Directory.CreateDirectory(@"F:\BKPatel\UserData\Test" + i + "\\");
-                //File.Copy(@"F:\BKPatel\UserData\Test123\Test1.dxf", @"F:\\BKPatel\\UserData\\Test" + i + @"\\Test" + i + ".dxf");
-
-                File.WriteAllText(@"F:\BKPatel\input\Test" + i + ".json", @"{
-	                                        ""DxfFilePath"" : ""F:\\BKPatel\\UserData\\Test" + i + @"\\Test" + i + @".dxf"",
-	                                        ""ProjectId"" : 1,
-	                                        ""ProjectType"": ""Building Permission"",
-	                                        ""ProjectVersion"" : ""20200505063422"",
-	                                        ""IsValidateDrawing"": true,
-	                                        ""IsCreateReport"" : true
-                                        }");
-            }
-        }
-
         public static void Main(string[] args)
         {
-
-            //   createInputJson();
-
-            #region comment
-            //string mutexName = "EAPSDXFProcessor";
-            //using (Mutex mutex = new Mutex(false, mutexName))
-            //{
-            //    if (!mutex.WaitOne(0, false))
-            //    {
-            //        Console.WriteLine(mutexName + " is already running! Exiting the application.");
-            //        return;
-            //    }
-            //    // Do stuff
-            //}
-
-            //string mutex_id = "MY_APP";
-            //using (Mutex mutex = new Mutex(false, mutex_id))
-            //{
-            //    if (!mutex.WaitOne(0, false))
-            //    {
-            //        //MessageBox.Show("Instance Already Running!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
-            //        Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Application is already running! Exiting the application.");
-            //        Task.Delay(1000).Wait();
-            //        return;
-            //    }
-            //    // Do stuff
-            //}
-
-            //      NetTopologySuiteUtility drw = new NetTopologySuiteUtility();
-            //      List<Coordinates> lstLift = new List<Coordinates>();
-            //      List<Coordinates> lstWall = new List<Coordinates>();
-
-            #endregion
-
             if (AlreadyRunning())
             {
                 Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Application is already running! Exiting the application.");
@@ -129,7 +77,7 @@ namespace EdmontonDrawingValidator
 
             General.InputFolder = inputDataSection["INPUT_FOLDER"];
 
-            General.RuleTesterInputFolder = inputDataSection["RULE_TESTER_INPUT_FOLDER"]; 
+            General.DrawingDataProcessorInputFolder = inputDataSection["DRAWING_DATA_PROCESSOR_INPUT_FOLDER"]; 
 
             General.NoOfThreadsToStart = inputDataSection["NUMBER_OF_THREADS"];
 
@@ -197,26 +145,6 @@ namespace EdmontonDrawingValidator
             }
             finally {
 
-
-                // Turn off FileSystemWatcher
-                //if (watcher != null)
-                //{
-
-                //    watcher.Changed -= OnChanged;
-                //    watcher.Created -= OnCreated;
-                //    //watcher.Deleted -= OnDeleted;
-                //    //watcher.Renamed -= OnRenamed;
-                //    watcher.Error -= OnError;
-
-                //    watcher.EnableRaisingEvents = false;
-                //    watcher.Dispose();
-                //    watcher = null;
-                //}
-
-
-                //// Dispose fileProcessor
-                //if (watcher != null)
-                //    watcher.Dispose();
             }
         }
         private static void OnCreated(object sender, FileSystemEventArgs e)
@@ -227,27 +155,11 @@ namespace EdmontonDrawingValidator
                 if (!lstFileInProcess.Contains(e.FullPath))
                     lstFileInProcess.Enqueue(e.FullPath);
 
-                //Console.WriteLine(value);
-                //Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Total files " + lstFileInProcess.Count());
             }
             
         }
         private static void OnChanged(object sender, FileSystemEventArgs e)
         {
-            //if (e.ChangeType != WatcherChangeTypes.Changed)
-            //{
-            //    return;
-            //}
-
-            //lock (objLock)
-            //{
-            //    if (!lstFileInProcess.Contains(e.FullPath))
-            //        lstFileInProcess.Enqueue(e.FullPath);
-
-            //    //Console.WriteLine(e.FullPath);
-            //    //Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} : Total files " + lstFileInProcess.Count());
-            //}
-            //Console.WriteLine($"Changed: {e.FullPath}");
         }
 
         private static void OnError(object sender, ErrorEventArgs e) =>

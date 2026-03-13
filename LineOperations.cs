@@ -828,12 +828,12 @@ namespace EdmontonDrawingValidator
 
         }
         
-        public List<CLineSegment> MergeCollinearSegments(List<CLineSegment> segments, ref string outstring) //tolerance = 1e-9
+        public List<CLineSegment> new_MergeCollinearSegments(List<CLineSegment> segments, ref string outstring) //tolerance = 1e-9
         {
-            return MergeCollinearSegments(segments, 0.05, ref outstring);
+            return new_MergeCollinearSegments(segments, 0.05, ref outstring);
         }
 
-        public List<CLineSegment> MergeCollinearSegments(List<CLineSegment> segments, double tolerance, ref string outstring) //tolerance = 1e-9
+        public List<CLineSegment> new_MergeCollinearSegments(List<CLineSegment> segments, double tolerance, ref string outstring) //tolerance = 1e-9
         {
             if (segments.Count < 2) return segments;
 
@@ -876,17 +876,17 @@ namespace EdmontonDrawingValidator
             return result;
         }
 
+        public List<CLineSegment> new_MergePolyLineSegments(List<CLineSegment> lines, ref string Output)
+        {
+            return new_MergeCollinearSegments(lines, 0.005, ref Output);
+        }
+
+        public List<CLineSegment> new_MergePolyLineSegments(List<CLineSegment> lines, double AllowDifference, ref string Output)
+        {
+            return new_MergeCollinearSegments(lines, AllowDifference, ref Output);
+        }
+
         public List<CLineSegment> MergePolyLineSegments(List<CLineSegment> lines, ref string Output)
-        {
-            return MergeCollinearSegments(lines, 0.005, ref Output);
-        }
-
-        public List<CLineSegment> MergePolyLineSegments(List<CLineSegment> lines, double AllowDifference, ref string Output)
-        {
-            return MergeCollinearSegments(lines, AllowDifference, ref Output);
-        }
-
-        public List<CLineSegment> old27Feb2026_MergePolyLineSegments(List<CLineSegment> lines, ref string Output)
         {
             //Output += "\n-----------------------------------------";
             //Output += "\nInput Line Count : " + lines.Count;
@@ -947,7 +947,7 @@ namespace EdmontonDrawingValidator
             return lines;
         }
 
-        public List<CLineSegment> old27Feb2026_MergePolyLineSegments(List<CLineSegment> lines, double AllowDifference, ref string Output)
+        public List<CLineSegment> MergePolyLineSegments(List<CLineSegment> lines, double AllowDifference, ref string Output)
         {
 
             Output += "\n-----------------------------------------";

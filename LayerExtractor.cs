@@ -269,20 +269,20 @@ namespace EdmontonDrawingValidator
             }
 
             //Drawing error checking
-            if (lstNewItemsBlockRef != null && lstNewItemsBlockRef.Count(x => x.LayerName.Trim().ToLower() == DxfLayersName.Building) > 0)
+            if (lstNewItemsBlockRef != null && lstNewItemsBlockRef.Count(x => x.LayerName.Trim().ToLower() == DxfLayersName.Unit) > 0)
             {
                 HasError = true;
-                lstError.Add($"{DxfLayersName.Building} has reference element found.");
+                lstError.Add($"{DxfLayersName.Unit} has reference element found.");
             }
 
-            if (lstNewItemsBlockRef != null && lstNewItemsBlockRef.Count(x => x.LayerName.Trim().ToLower() == DxfLayersName.Floor) > 0)
+            if (lstNewItemsBlockRef != null && lstNewItemsBlockRef.Count(x => x.LayerName.Trim().ToLower() == DxfLayersName.FloorPlan) > 0)
             {
                 HasError = true;
-                lstError.Add($"{DxfLayersName.Floor} has reference element found.");
+                lstError.Add($"{DxfLayersName.FloorPlan} has reference element found.");
             }
 
             //clear ref element
-            lstNewItemsBlockRef = lstNewItemsBlockRef.Where(x => x.LayerName.ToLower().Trim() != DxfLayersName.Building && x.LayerName.ToLower().Trim() != DxfLayersName.Floor).ToList();
+            lstNewItemsBlockRef = lstNewItemsBlockRef.Where(x => x.LayerName.ToLower().Trim() != DxfLayersName.Unit && x.LayerName.ToLower().Trim() != DxfLayersName.FloorPlan).ToList();
 
             List<LayerCoordinateInfo> lstNewItemsBlockRefElements = new List<LayerCoordinateInfo>();
             List<LayerTextInfo> lstNewItemsBlockRefTextElements = new List<LayerTextInfo>();

@@ -40,6 +40,7 @@ namespace EdmontonDrawingValidator.Model
         public Cordinates CenterPoint { get; set; }
         public double StartAngle { get; set; }
         public double EndAngle { get; set; }
+        public string Text { get; set; }
          
     } 
 }
